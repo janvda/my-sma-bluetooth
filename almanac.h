@@ -16,16 +16,9 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 
-#include <mysql/mysql.h>
 #include "sma_struct.h"
 
-extern MYSQL *conn;
-extern MYSQL_RES *res;
-
-extern void OpenMySqlDatabase(char *, char *, char *, char * );
-extern void CloseMySqlDatabase();
-extern int DoQuery(char *);
-extern int install_mysql_tables( ConfType *, FlagType *,  char * );
-extern void update_mysql_tables( ConfType *, FlagType *  );
-extern int check_schema( ConfType *, FlagType *,  char * );
-extern void live_mysql( ConfType, FlagType, LiveDataType *, int );
+extern char *sunrise( ConfType *conf, int debug );
+extern char *sunset( ConfType *conf, int debug );
+extern int todays_almanac( ConfType *conf, int debug );
+extern void update_almanac( ConfType *conf, char * sunrise, char * sunset, int debug );

@@ -1,58 +1,87 @@
+/* tool to read power production data for SMA solar power convertors 
+   Copyright Wim Hofman 2010 
+   Copyright Stephen Collier 2010,2011 
+   Copyright Edwin Zuidema 2020, 2021
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>. */
+
+#define _XOPEN_SOURCE /* glibc needs this */
+#define __USE_XOPEN /* time.h needs this */
+#define _GNU_SOURCE /* getline from stdio needs this */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "sma_struct.h"
 #include <sys/socket.h>
+#include <unistd.h>
 #include <time.h>
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/rfcomm.h>
 #include <errno.h>
+#include "sma_struct.h"
 #include "sma_mysql.h"
 
-
-
-extern unsigned char * ReadStream( ConfType *, FlagType *, ReadRecordType *, int *, unsigned char *, int *, unsigned char *, int *, unsigned char *, int , int *, int * );
+// From smatool.c
 extern char * return_xml_data( ConfType *,int );
+
+extern int ConvertStreamtoInt( unsigned char * stream, int length, int * value );
 extern long ConvertStreamtoLong( unsigned char *, int, unsigned long * );
 extern float ConvertStreamtoFloat( unsigned char *, int, float * );
 extern char * ConvertStreamtoString( unsigned char *, int );
+extern time_t ConvertStreamtoTime( unsigned char * stream, int length, time_t * value, int *day, int *month, int *year, int *hour, int *minute, int *second );
+extern unsigned char *ReadStream( ConfType * conf, FlagType * flag, ReadRecordType * readRecord, int * s, unsigned char * stream, int * streamlen, unsigned char * datalist, int * datalen, unsigned char * last_sent, int cc, int * terminated, int * togo );
+
 extern unsigned char conv( char * );
+extern void tryfcs16(FlagType * flag, unsigned char *cp, int len, unsigned char *fl, int * cc);
+extern void add_escapes(unsigned char *cp, int *len);
+extern void fix_length_send( FlagType * flag, unsigned char *cp, int *len);
+extern char *debugdate();
+extern int select_str(char *s);
+extern int read_bluetooth( ConfType * conf, FlagType * flag, ReadRecordType * readRecord, int *s, int *rr, unsigned char *received, int cc, unsigned char *last_sent, int *terminated );
+extern int empty_read_bluetooth(  ConfType * conf, FlagType * flag, ReadRecordType * readRecord, int *s, int *rr, unsigned char *received, int cc, unsigned char *last_sent, int *terminated );
 
 
 int ConnectSocket ( ConfType * conf )
 {
-    struct sockaddr_rc addr = { 0 };
-    int i;
-    int s=0;
-    int status=-1; //connection status
+  struct sockaddr_rc addr = { 0 };
+  int i;
+  int s=0;
+  int status=-1; //connection status
    
-    //Try for a few connects
-    for( i=1; i<20; i++ ){
-        // allocate a socket
-        if(( (s) = socket(AF_BLUETOOTH, SOCK_STREAM, BTPROTO_RFCOMM)) > 0 ) {
+  //Try a few connects
+  for( i=1; i<20; i++ ){
+    // allocate a socket
+    if(( (s) = socket(AF_BLUETOOTH, SOCK_STREAM, BTPROTO_RFCOMM)) > 0 ) {
+      // set the connection parameters (who to connect to)
+      addr.rc_family = AF_BLUETOOTH;
+      addr.rc_channel = (uint8_t) 1;
+      str2ba( conf->BTAddress, &addr.rc_bdaddr );
 
-            // set the connection parameters (who to connect to)
-            addr.rc_family = AF_BLUETOOTH;
-            addr.rc_channel = (uint8_t) 1;
-            str2ba( conf->BTAddress, &addr.rc_bdaddr );
-    
-            // connect to server
-      	    status = connect((s), (struct sockaddr *)&addr, sizeof(addr));
-      	    if (status <0){
-                printf("Error connecting to %s\n",conf->BTAddress);
-                close( (s) );
-      	    }
-            else
-                //conected
-                break;
-        }
-        else
-        {
-            //Can't open socket try again
-            close((s));
-        }
+      // connect to server
+      status = connect((s), (struct sockaddr *)&addr, sizeof(addr));
+      if (status <0) {
+        printf("Error connecting to %s\n",conf->BTAddress);
+        close( (s) );
+      } else
+        //connected
+        break;
+    } else {
+      //Can't open socket, try again
+      close((s));
     }
-    return( s );
+  }
+  return( s );
 }
 /*
  * Update internal running list with live data for later processing
@@ -343,7 +372,7 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
                     if( strptime( conf->datefrom, "%Y-%m-%d %H:%M:%S", &tm) == 0 ) 
                     {
                         if( flag->debug==1 ) printf( "datefrom %s\n", conf->datefrom );
-                        printf( "Time Coversion Error\n" );
+                        fprintf(stderr, "ERROR: Time Conversion Error\n" );
                         error=1;
                         exit(-1);
                     }
@@ -351,15 +380,13 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
                     fromtime=mktime(&tm);
                     if( fromtime == -1 ) {
                         // Error we need to do something about it
-                        printf( "%03x",(int)fromtime ); getchar();
-                        printf( "\n%03x", (int)fromtime ); getchar();
+                        fprintf(stderr, "ERROR: bad fromtime %03x", (int)fromtime);
                         fromtime=0;
-                        printf( "bad from" ); getchar();
                     }
                 }
                 else
                 {
-                    printf( "no from" ); getchar();
+                    printf( "no fromtime" );
                     fromtime=0;
                 }
 		sprintf(tt,"%03x",(int)fromtime-300); //convert to a hex in a string and start 5 mins before for dummy read.
@@ -385,10 +412,8 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
                     totime=mktime(&tm);
                     if( totime == -1 ) {
                         // Error we need to do something about it
-                        printf( "%03x",(int)totime ); getchar();
-                        printf( "\n%03x", (int)totime ); getchar();
+                        fprintf(stderr, "ERROR: bad to %03x", (int)totime );
                         totime=0;
-                        printf( "bad to" ); getchar();
                     }
                 }
                 else
@@ -411,15 +436,13 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
                     fromtime=mktime(&tm)-86400;
                     if( fromtime == -1 ) {
                         // Error we need to do something about it
-                        printf( "%03x",(int)fromtime ); getchar();
-                        printf( "\n%03x", (int)fromtime ); getchar();
+                        fprintf(stderr, "ERROR: bad from %03x", (int)fromtime );
                         fromtime=0;
-                        printf( "bad from" ); getchar();
                     }
                 }
                 else
                 {
-                    printf( "no from" ); getchar();
+                    fprintf(stderr, "ERROR: no from" );
                     fromtime=0;
                 }
 		sprintf(tt,"%03x",(int)fromtime); //convert to a hex in a string
@@ -440,10 +463,8 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
                     totime=mktime(&tm)-86400;
                     if( totime == -1 ) {
                          // Error we need to do something about it
-                         printf( "%03x",(int)totime ); getchar();
-                         printf( "\n%03x", (int)totime ); getchar();
+                         fprintf(stderr, "bad from %03x", (int)totime ); 
                          fromtime=0;
-                         printf( "bad from" ); getchar();
                     }
                 }
                 else
@@ -1051,49 +1072,6 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
            }
     } 
 }
-/*
- * Run a command on an inverter
- *
- */
-char * InverterCommand(  const char * command, ConfType * conf, FlagType * flag, UnitType **unit, int *s, FILE * fp, ArchDataType **archdatalist, int *archdatalen , LiveDataType **livedatalist, int *livedatalen)
-{
-    int linenum;
-    char *returnValues=NULL;
-
-    if (fseek( fp, 0L, 0 ) < 0 )
-        printf( "\nError" );
-    if(( linenum = GetLine( command, fp )) > 0 ) {
-        if( ProcessCommand( conf, flag, unit, s, fp, &linenum, archdatalist, archdatalen, livedatalist, livedatalen ) < 0 ) {
-            printf( "\nError need to do something" ); getchar();
-        }
-    }
-    else
-    {
-	//Command not found in config
-	printf( "\nCommand %s not found", command );
-    }    
-    return( returnValues );
-}
-
-int OpenInverter( ConfType * conf, FlagType * flag, UnitType **unit, int * s, ArchDataType **archdatalist, int *archdatalen , LiveDataType **livedatalist, int *livedatalen )
-{
-    FILE * fp;
-
-    if (flag->file ==1)
-        fp=fopen(conf->File,"r");
-    else
-        fp=fopen("/etc/sma.in","r");
-    if( fp == NULL ) {
-        //Can't open file
-        perror( "Can't open conf file" );
-        return -1;
-    }
-    if( InverterCommand( "init", conf, flag, unit, s, fp, archdatalist, archdatalen, livedatalist, livedatalen ) == (char *)NULL )
-
-    close( fp );
-    return( 0 );
-}
-
 
 /*
  * Get Line number of the command required
@@ -1122,4 +1100,24 @@ int GetLine( const char * command, FILE * fp )
     if( !found ) linenum=0;
     free(line);
     return linenum;
+}
+
+/*
+ * Run a command on an inverter
+ *
+ */
+void InverterCommand(  const char * command, ConfType * conf, FlagType * flag, UnitType **unit, int *s, FILE * fp, ArchDataType **archdatalist, int *archdatalen , LiveDataType **livedatalist, int *livedatalen)
+{
+  int linenum;
+
+  if (fseek( fp, 0L, 0 ) < 0 )
+    fprintf(stderr, "ERROR: Cannot seek sma.in file" );
+  if(( linenum = GetLine( command, fp )) > 0 ) {
+    if( ProcessCommand( conf, flag, unit, s, fp, &linenum, archdatalist, archdatalen, livedatalist, livedatalen ) < 0 ) {
+      fprintf(stderr, "ERROR: Cannot process command ");
+    }
+  } else {
+    //Command not found in config
+    fprintf(stderr, "ERROR: Command %s not found", command );
+  }
 }

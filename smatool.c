@@ -1,6 +1,7 @@
 /* tool to read power production data for SMA solar power convertors 
    Copyright Wim Hofman 2010 
    Copyright Stephen Collier 2010,2011 
+   Copyright Edwin Zuidema 2020, 2021
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -14,8 +15,6 @@
 
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. */
-
-/* compile gcc -lbluetooth -lcurl -lmysqlclient -g -o smatool smatool.c */
 
 #define _XOPEN_SOURCE /* glibc needs this */
 #include <stdio.h>
@@ -31,11 +30,11 @@
 #include <assert.h>
 #include <sys/types.h>
 #include <curl/curl.h>
-#include "repost.h"
-#include "sma_mysql.h"
 #include <libxml2/libxml/parser.h>
 #include <libxml2/libxml/xpath.h>
-
+#include "almanac.h"
+#include "sb_commands.h"
+#include "sma_mysql.h"
 
 /*
  * u16 represents an unsigned 16-bit number.  Adjust the typedef for
@@ -172,8 +171,7 @@ int quick_pow10(int n)
 /*
  * Add escapes (7D) as they are required
  */
-void
-add_escapes(unsigned char *cp, int *len)
+void add_escapes(unsigned char *cp, int *len)
 {
     int i,j;
 
@@ -195,8 +193,7 @@ add_escapes(unsigned char *cp, int *len)
 /*
  * Recalculate and update length to correct for escapes
  */
-void
-fix_length_send( FlagType * flag, unsigned char *cp, int *len)
+void fix_length_send( FlagType * flag, unsigned char *cp, int *len)
 {
     int	    delta=0;
 
@@ -240,7 +237,7 @@ fix_length_send( FlagType * flag, unsigned char *cp, int *len)
         case 0x60: cp[3]=0x1e; break;
         case 0x61: cp[3]=0x1f; break;
         case 0x62: cp[3]=0x1e; break;
-        default: printf( "NO CONVERSION!" );getchar();break;
+        default: printf( "NO CONVERSION!" );break;
       }
       */
       if( flag->debug == 1 ) 
@@ -279,8 +276,7 @@ fix_length_received(FlagType * flag, unsigned char *received, int *len)
 /*
  * How to use the fcs
  */
-void
-tryfcs16(FlagType * flag, unsigned char *cp, int len, unsigned char *fl, int * cc)
+void tryfcs16(FlagType * flag, unsigned char *cp, int len, unsigned char *fl, int * cc)
 {
     u16 trialfcs;
     unsigned
@@ -419,8 +415,8 @@ check_send_error( FlagType * flag, int *s, int *rr, unsigned char *received, int
 	   printf("\n\n");
         }
         if ((cc==bytes_read)&&(memcmp(received,last_sent,cc) == 0)){
-           printf( "ERROR received what we sent!" ); getchar();
-           //Need to do something
+          fprintf(stderr, "ERROR received what we sent!\n");
+          //Need to do something
         }
         if( buf[ bytes_read-1 ] == 0x7e )
            (*terminated) = 1;
@@ -479,7 +475,7 @@ empty_read_bluetooth(  ConfType * conf, FlagType * flag, ReadRecordType * readRe
     FD_SET((*s), &readfds);
 				
     if( select((*s)+1, &readfds, NULL, NULL, &tv) <  0) {
-        printf( "select error has occurred" ); getchar();
+      fprintf(stderr, "ERROR: select error has occurred\n");
     }
 
 				
@@ -636,8 +632,8 @@ empty_read_bluetooth(  ConfType * conf, FlagType * flag, ReadRecordType * readRe
     memset(received,0,1024);
     return 0;
 }
-int
-read_bluetooth( ConfType * conf, FlagType * flag, ReadRecordType * readRecord, int *s, int *rr, unsigned char *received, int cc, unsigned char *last_sent, int *terminated )
+
+int read_bluetooth( ConfType * conf, FlagType * flag, ReadRecordType * readRecord, int *s, int *rr, unsigned char *received, int cc, unsigned char *last_sent, int *terminated )
 {
     int bytes_read,i,j, last_decoded;
     unsigned char buf[1024]; /*read buffer*/
@@ -654,11 +650,11 @@ read_bluetooth( ConfType * conf, FlagType * flag, ReadRecordType * readRecord, i
     FD_SET((*s), &readfds);
 				
     if( select((*s)+1, &readfds, NULL, NULL, &tv) <  0) {
-        printf( "select error has occurred" ); getchar();
+      fprintf(stderr, "ERROR: select error has occurred\n");
     }
 				
-    if( flag->verbose==1) printf("Reading bluetooth packett\n");
-    if( flag->verbose==1) printf("socket=%d\n", (*s));
+    if( flag->debug==1) printf("Reading bluetooth packet\n");
+    if( flag->debug==1) printf("socket=%d\n", (*s));
     (*terminated) = 0; // Tag to tell if string has 7e termination
     // first read the header to get the record length
     if (FD_ISSET((*s), &readfds)){	// did we receive anything within 5 seconds
@@ -778,7 +774,7 @@ read_bluetooth( ConfType * conf, FlagType * flag, ReadRecordType * readRecord, i
            }
            printf("\n   " );
            j=0;
-	   for (i=last_decoded;i<bytes_read;i++) {
+           for (i=last_decoded;i<bytes_read;i++) {
               if( j%16== 0 )
                  printf( "\n   %08x: ",j);
               printf("%02x ",buf[i]);
@@ -788,17 +784,15 @@ read_bluetooth( ConfType * conf, FlagType * flag, ReadRecordType * readRecord, i
 	   printf("\n\n");
         }
            
-
- 
         if ((cc==bytes_read)&&(memcmp(received,last_sent,cc) == 0)){
-           printf( "ERROR received what we sent!" ); getchar();
+          fprintf(stderr, "ERROR: received what we sent!\n");
            //Need to do something
         }
         // Check check bit
         checkbit=header[0]^header[1]^header[2];
         if( checkbit != header[3] )
         {
-            printf("\nCheckbit Error! %02x!=%02x\n",  header[0]^header[1]^header[2], header[3]);
+            fprintf(stderr, "ERROR: Checkbit Error! %02x!=%02x\n",  header[0]^header[1]^header[2], header[3]);
             (*rr) = 0;
             memset(received,0,1024);
             return -1;
@@ -874,7 +868,6 @@ unsigned char *  get_timezone_in_seconds( FlagType * flag, unsigned char *tzhex 
    isdst  = loctime->tm_isdst;
    utctime = gmtime(&curtime);
    
-
    if( flag->debug == 1 ) printf( "utc=%04d-%02d-%02d %02d:%02d local=%04d-%02d-%02d %02d:%02d diff %d hours\n", utctime->tm_year+1900, utctime->tm_mon+1,utctime->tm_mday,utctime->tm_hour,utctime->tm_min, year, month, day, hour, minute, hour-utctime->tm_hour );
    localOffset=(hour-utctime->tm_hour)+(float)(minute-utctime->tm_min)/60;
    if( flag->debug == 1 ) printf( "localOffset=%f\n", localOffset );
@@ -981,7 +974,7 @@ void  SetInverterType( ConfType * conf, UnitType ** unit )
     conf->MySerial[3] = rand()%254;
 }
 
-//Convert a recieved string to a value
+//Convert a received string to a value
 long ConvertStreamtoLong( unsigned char * stream, int length, unsigned long long  * value )
 {
    int	i, nullvalue;
@@ -1046,6 +1039,7 @@ char * ConvertStreamtoString( unsigned char * stream, int length )
       value[i]= 0; //string null termination
    return (char *)value;
 }
+
 //read return value data from init file
 ReturnType * 
 InitReturnKeys( ConfType * conf )
@@ -1061,8 +1055,8 @@ InitReturnKeys( ConfType * conf )
 
    fp=fopen(conf->File,"r");
    if( fp == NULL ) {
-       printf( "\nCouldn't open file %s", conf->File );
-       printf( "\nerror=%s\n", strerror( errno ));
+       fprintf(stderr, "ERROR: Couldn't open file %s", conf->File );
+       fprintf(stderr, "Error = %s\n", strerror( errno ));
        exit(1);
    }
    else {
@@ -1107,7 +1101,7 @@ InitReturnKeys( ConfType * conf )
                     {
                         if( line[0] != ':' )
                         {
-                             printf( "\nWarning Data Scan Failure\n %s\n", line ); getchar();
+                             printf( "\nWARNING: Data Scan Failure\n %s\n", line );
                         }
                     }
                 }
@@ -1121,7 +1115,7 @@ InitReturnKeys( ConfType * conf )
    return returnkeylist;
 }
 
-//Convert a recieved string to a value
+//Convert a received string to a value
 int ConvertStreamtoInt( unsigned char * stream, int length, int * value )
 {
    int	i, nullvalue;
@@ -1140,7 +1134,7 @@ int ConvertStreamtoInt( unsigned char * stream, int length, int * value )
    return (*value);
 }
 
-//Convert a recieved string to a value
+//Convert a received string to a value
 time_t ConvertStreamtoTime( unsigned char * stream, int length, time_t * value, int *day, int *month, int *year, int *hour, int *minute, int *second )
 {
    int	i, nullvalue;
@@ -1193,13 +1187,6 @@ void  SetSwitches( ConfType *conf, FlagType *flag )
         flag->file=1;
     else
         flag->file=0;
-    //Check if all PVOutput variables are set
-    if(( strlen(conf->PVOutputURL) > 0 )
-	 &&( strlen(conf->PVOutputKey) > 0 )
-	 &&( strlen(conf->PVOutputSid) > 0 ))
-        flag->post=1;
-    else
-        flag->post=0;
     if(( strlen(conf->datefrom) > 0 )
 	 &&( strlen(conf->dateto) > 0 ))
         flag->daterange=1;
@@ -1207,8 +1194,7 @@ void  SetSwitches( ConfType *conf, FlagType *flag )
         flag->daterange=0;
 }
 
-unsigned char *
-ReadStream( ConfType * conf, FlagType * flag, ReadRecordType * readRecord, int * s, unsigned char * stream, int * streamlen, unsigned char * datalist, int * datalen, unsigned char * last_sent, int cc, int * terminated, int * togo )
+unsigned char *ReadStream( ConfType * conf, FlagType * flag, ReadRecordType * readRecord, int * s, unsigned char * stream, int * streamlen, unsigned char * datalist, int * datalen, unsigned char * last_sent, int cc, int * terminated, int * togo )
 {
    int	finished;
    int	finished_record;
@@ -1263,37 +1249,32 @@ ReadStream( ConfType * conf, FlagType * flag, ReadRecordType * readRecord, int *
 /* Init Config to default values */
 void InitConfig( ConfType *conf )
 {
-    strcpy( conf->Config,"./smatool.conf");
+    strcpy( conf->Config,"/etc/smatool.conf");
     strcpy( conf->BTAddress, "" );  
     conf->bt_timeout = 30;  
     strcpy( conf->Password, "0000" );  
-    strcpy( conf->File, "sma.in" );  
-    strcpy( conf->Xml, "/usr/local/bin/smatool.xml" );  
+    strcpy( conf->File, "/etc/sma.in" );  
+    strcpy( conf->Xml, "/etc/smatool.xml" );  
     conf->latitude_f = 999 ;  
     conf->longitude_f = 999 ;  
     strcpy( conf->MySqlHost, "localhost" );  
     strcpy( conf->MySqlDatabase, "smatool" );  
     strcpy( conf->MySqlUser, "" );  
     strcpy( conf->MySqlPwd, "" );  
-    strcpy( conf->PVOutputURL, "http://pvoutput.org/service/r2/addstatus.jsp" );  
-    strcpy( conf->PVOutputKey, "" );  
-    strcpy( conf->PVOutputSid, "" );  
     strcpy( conf->datefrom, "" );  
     strcpy( conf->dateto, "" );  
 }
 
-/* Init Flagsg to default values */
+/* Init Flags to default values */
 void InitFlag( FlagType *flag )
 {
     flag->debug=0;         /* debug flag */
     flag->verbose=0;       /* verbose flag */
     flag->daterange=0;     /* is system using a daterange */
-    flag->location=0;     /* is system using a daterange */
-    flag->test=0;     /* is system using a daterange */
-    flag->mysql=0;     /* is system using a daterange */
-    flag->file=0;     /* is system using a daterange */
-    flag->post=0;     /* is system using a daterange */
-    flag->repost=0;     /* is system using a daterange */
+    flag->location=0;     /* is system using a location */
+    flag->test=0;     /* is system using a test */
+    flag->mysql=0;     /* is system using MySQL */
+    flag->file=0;     /* is system using a file for sma.in */
 }
 
 /* read Config from file */
@@ -1308,7 +1289,7 @@ int GetConfig( ConfType *conf, FlagType * flag )
     {
         if(( fp=fopen(conf->Config,"r")) == (FILE *)NULL )
         {
-           printf( "Error! Could not open file %s\n", conf->Config );
+           fprintf(stderr, "ERROR: Could not open file %s\n", conf->Config );
            return( -1 ); //Could not open file
         }
     }
@@ -1316,7 +1297,7 @@ int GetConfig( ConfType *conf, FlagType * flag )
     {
         if(( fp=fopen("./smatool.conf","r")) == (FILE *)NULL )
         {
-           printf( "Error! Could not open file ./smatool.conf\n" );
+           fprintf(stderr, "ERROR: Could not open file ./smatool.conf\n" );
            return( -1 ); //Could not open file
         }
     }
@@ -1349,12 +1330,6 @@ int GetConfig( ConfType *conf, FlagType * flag )
                        strcpy( conf->MySqlUser, value );  
                     if( strcmp( variable, "MySqlPwd" ) == 0 )
                        strcpy( conf->MySqlPwd, value );  
-                    //if( strcmp( variable, "PVOutputURL" ) == 0 )
-                     //  strcpy( conf->PVOutputURL, value );  
-                    if( strcmp( variable, "PVOutputKey" ) == 0 )
-                       strcpy( conf->PVOutputKey, value );  
-                    if( strcmp( variable, "PVOutputSid" ) == 0 )
-                       strcpy( conf->PVOutputSid, value );  
                 }
             }
         }
@@ -1376,7 +1351,7 @@ int GetInverterSetting( ConfType *conf, FlagType * flag )
     {
         if(( fp=fopen(conf->Setting,"r")) == (FILE *)NULL )
         {
-           printf( "Error! Could not open file %s\n", conf->Setting );
+           fprintf(stderr, "ERROR: Could not open file %s\n", conf->Setting );
            return( -1 ); //Could not open file
         }
     }
@@ -1384,7 +1359,7 @@ int GetInverterSetting( ConfType *conf, FlagType * flag )
     {
         if(( fp=fopen("./invcode.in","r")) == (FILE *)NULL )
         {
-           printf( "Error! Could not open file ./invcode.in\n" );
+           fprintf(stderr, "ERROR: Could not open file ./invcode.in\n" );
            return( -1 ); //Could not open file
         }
     }
@@ -1432,7 +1407,7 @@ getdoc (char *docname) {
 	doc = xmlParseFile(docname);
 	
 	if (doc == NULL ) {
-		fprintf(stderr,"Document not parsed successfully. \n");
+		fprintf(stderr,"ERROR: XML Document not parsed successfully.\n");
 		return NULL;
 	}
 
@@ -1447,18 +1422,18 @@ getnodeset (xmlDocPtr doc, xmlChar *xpath){
 
 	context = xmlXPathNewContext(doc);
 	if (context == NULL) {
-		printf("Error in xmlXPathNewContext\n");
+		fprintf(stderr, "ERROR: No context in xmlXPathNewContext\n");
 		return NULL;
 	}
 	result = xmlXPathEvalExpression(xpath, context);
 	xmlXPathFreeContext(context);
 	if (result == NULL) {
-		printf("Error in xmlXPathEvalExpression\n");
+		fprintf(stderr, "ERROR: No path in xmlXPathEvalExpression\n");
 		return NULL;
 	}
 	if(xmlXPathNodeSetIsEmpty(result->nodesetval)){
 		xmlXPathFreeObject(result);
-                printf("No result\n");
+                fprintf(stderr, "ERROR: Empty path nodes\n");
 		return NULL;
 	}
 	return result;
@@ -1470,7 +1445,7 @@ setup_xml_xpath( ConfType *conf, xmlChar * xpath, char * docname, int index )
     int len;
 
     sprintf( xpath, "//Datamap/Map[@index='%d']", index );
-    sprintf( docname, "%s", "/usr/local/bin/smatool.xml" );
+    sprintf( docname, "%s", conf->Xml );
     return (1);
 }
 
@@ -1547,11 +1522,6 @@ void PrintHelp()
     printf( "privelege user to allow the creation of databases and tables, use command line \n" );
     printf( "       --INSTALL                           install mysql data tables\n");
     printf( "       --UPDATE                            update mysql data tables\n");
-    printf( "PVOutput.org (A free solar information system) Configs\n" );
-    printf( "  -url,  --pvouturl PVOUTURL               pvoutput.org live url\n");
-    printf( "  -key,  --pvoutkey PVOUTKEY               pvoutput.org key\n");
-    printf( "  -sid,  --pvoutsid PVOUTSID               pvoutput.org sid\n");
-    printf( "  -repost                                  verify and repost data if different\n");
     printf( "\n\n" );
 }
 
@@ -1564,7 +1534,10 @@ int ReadCommandConfig( ConfType *conf, FlagType *flag, int argc, char **argv, in
     for (i=1;i<argc;i++)			//Read through passed arguments
     {
 	if ((strcmp(argv[i],"-v")==0)||(strcmp(argv[i],"--verbose")==0)) flag->verbose = 1;
-	else if ((strcmp(argv[i],"-d")==0)||(strcmp(argv[i],"--debug")==0)) flag->debug = 1;
+	else if ((strcmp(argv[i],"-d")==0)||(strcmp(argv[i],"--debug")==0)) {
+            flag->debug = 1;
+            flag->verbose = 1;
+        }
 	else if ((strcmp(argv[i],"-c")==0)||(strcmp(argv[i],"--config")==0)){
 	    i++;
 	    if(i<argc){
@@ -1649,24 +1622,6 @@ int ReadCommandConfig( ConfType *conf, FlagType *flag, int argc, char **argv, in
             if (i<argc){
 		strcpy(conf->MySqlPwd,argv[i]);
             }
-	}				
-	else if ((strcmp(argv[i],"-url")==0)||(strcmp(argv[i],"--pvouturl")==0)){
-	    i++;
-	    if(i<argc){
-		strcpy(conf->PVOutputURL,argv[i]);
-	    }
-	}
-	else if ((strcmp(argv[i],"-key")==0)||(strcmp(argv[i],"--pvoutkey")==0)){
-	    i++;
-	    if(i<argc){
-		strcpy(conf->PVOutputKey,argv[i]);
-	    }
-	}
-	else if ((strcmp(argv[i],"-sid")==0)||(strcmp(argv[i],"--pvoutsid")==0)){
-	    i++;
-	    if(i<argc){
-		strcpy(conf->PVOutputSid,argv[i]);
-	    }
 	}
 	else if ((strcmp(argv[i],"-h")==0) || (strcmp(argv[i],"--help") == 0 ))
         {
@@ -1681,7 +1636,7 @@ int ReadCommandConfig( ConfType *conf, FlagType *flag, int argc, char **argv, in
            for( i=0; i< argc; i++ )
              printf( "%s ", argv[i] );
            printf( "\n\n" );
-          
+
            PrintHelp();
            return( -1 );
         }
@@ -1709,288 +1664,163 @@ char * debugdate()
 
 int main(int argc, char **argv)
 {
-    FILE 		*fp;
-    unsigned char 	* last_sent;
-    ConfType 		conf;
-    FlagType 		flag;
-    int 		maximumUnits=1;
-    UnitType 		*unit;
-    ReadRecordType 	readRecord;
-    ReturnType 		*returnkeylist;
-    unsigned char 	received[1024];
-    int			i,s;
-    int 		install=0, update=0, already_read=0, no_dark=0;
-    int 		error=0;
-    int 		max_output;
-    char 		compurl[400];  //seg error on curl fix 2012.01.14
-    unsigned char 	tzhex[2] = { 0 };
-    time_t 		reporttime;
-    MYSQL_ROW 		row, row1;
-    char 		SQLQUERY[200];
-    int			archdatalen=0, livedatalen=0;
-    ArchDataType 	*archdatalist=NULL;
-    LiveDataType 	*livedatalist=NULL;
+  FILE *fp;
+  unsigned char *last_sent;
+  ConfType conf;
+  FlagType flag;
+  int maximumUnits=1;
+  UnitType *unit;
+  ReadRecordType readRecord;
+  ReturnType *returnkeylist;
+  unsigned char received[1024];
+  int i,s;
+  int install=0, update=0, already_read=0, no_dark=0;
+  int error=0;
+  int max_output;
+  char compurl[400];
+  unsigned char tzhex[2] = { 0 };
+  time_t reporttime;
+  MYSQL_ROW row, row1;
+  char SQLQUERY[200];
+  int archdatalen=0, livedatalen=0;
+  ArchDataType *archdatalist=NULL;
+  LiveDataType *livedatalist=NULL;
 
-    char sunrise_time[6],sunset_time[6];
-   
-    CURL *curl;
-    CURLcode result;
+  char sunrise_time[6],sunset_time[6];
 
-    unit=(UnitType *)malloc( sizeof(UnitType) * maximumUnits);
-    if( unit == NULL ) {
-        printf("Error allocating memory for line buffer.");
-        exit(1);
-    }
-    memset(received,0,1024);
-    last_sent = (unsigned  char *)malloc( sizeof( unsigned char ));
-    /* get the report time - used in various places */
-    reporttime = time(NULL);  //get time in seconds since epoch (1/1/1970)	
-   
-    // set config to defaults
-    InitConfig( &conf );
-    InitFlag( &flag );
-    // read command arguments needed so can get config
-    if( ReadCommandConfig( &conf, &flag, argc, argv, &no_dark, &install, &update ) < 0 )
-        exit(0);
-    // read Config file
-    if( GetConfig( &conf, &flag ) < 0 )
-        exit(-1);
-    // read command arguments  again - they overide config
-    if( ReadCommandConfig( &conf, &flag, argc, argv, &no_dark ,&install, &update ) < 0 )
-        exit(0);
-    // read Inverter Setting file
-    //if( GetInverterSetting( &conf ) < 0 )
-      //  exit(-1);
-    // set switches used through the program
-    SetSwitches( &conf, &flag );  
-    if(( install==1 )&&( flag.mysql==1 ))
-    {
-        install_mysql_tables( &conf, &flag, SCHEMA );
-        exit(0);
-    }
-    if(( update==1 )&&( flag.mysql==1 ))
-    {
-        update_mysql_tables( &conf, &flag );
-        exit(0);
-    }
-    // Get Return Value lookup from file
-    returnkeylist = InitReturnKeys( &conf );
-    // Set value for inverter type
-    
-    SetInverterType( &conf, &unit );
-    // Get Local Timezone offset in seconds
-    get_timezone_in_seconds( &flag, tzhex );
+  CURL *curl;
+  CURLcode result;
+
+  unit=(UnitType *)malloc( sizeof(UnitType) * maximumUnits);
+  if( unit == NULL ) {
+    fprintf(stderr, "ERROR: Unable to allocate memory");
+    exit(1);
+  }
+  memset(received,0,1024);
+  last_sent = (unsigned  char *)malloc( sizeof( unsigned char ));
+  // get the report time - used in various places, seconds since epoch (1/1/1970)
+  reporttime = time(NULL);
+
+  // set config to defaults
+  InitConfig( &conf );
+  InitFlag( &flag );
+  // read command arguments needed so can get config
+  if( ReadCommandConfig( &conf, &flag, argc, argv, &no_dark, &install, &update ) < 0 ) {
+    fprintf(stderr, "ERROR: Unable to command line arguments");
+    exit(1);
+  }
+  // read Config file
+  if( GetConfig( &conf, &flag ) < 0 ) {
+    fprintf(stderr, "ERROR: Unable to read config file");
+    exit(1);
+  }
+  // read command arguments  again - they overide config
+  if( ReadCommandConfig( &conf, &flag, argc, argv, &no_dark ,&install, &update ) < 0 ) {
+    fprintf(stderr, "ERROR: Unable to command line arguments");
+    exit(1);
+  }
+  // set switches used through the program
+  SetSwitches( &conf, &flag );
+  // If asked for installing MySQL database structure
+  if(( install==1 )&&( flag.mysql==1 ))
+  {
+    install_mysql_tables( &conf, &flag, SCHEMA );
+    exit(0);
+  }
+  // If asked to update MySQL database structure
+  if(( update==1 )&&( flag.mysql==1 )) {
+    update_mysql_tables( &conf, &flag );
+    exit(0);
+  }
+  // Get Return Value lookup from file
+  returnkeylist = InitReturnKeys( &conf );
+  // Set value for inverter type
+  SetInverterType( &conf, &unit );
+  // Get Local Timezone offset in seconds
+  get_timezone_in_seconds( &flag, tzhex );
     // Location based information to avoid quering Inverter in the dark
-    if((flag.location==1)&&(flag.mysql==1)) {
-        if( flag.debug == 1 ) printf( "Before todays Almanac\n" ); 
-        if( ! todays_almanac( &conf ) ) {
-           sprintf( sunrise_time, "%s", sunrise(&conf ));
-           sprintf( sunset_time, "%s", sunset(&conf ));
-           if( flag.verbose==1) printf( "sunrise=%s sunset=%s\n", sunrise_time, sunset_time );
-           update_almanac(  &conf, sunrise_time, sunset_time );
-        }
+  if((flag.location==1)&&(flag.mysql==1)) {
+    if( flag.debug == 1 ) printf( "Before todays Almanac\n" ); 
+    if( ! todays_almanac( &conf, flag.debug ) ) {
+      sprintf( sunrise_time, "%s", sunrise(&conf, flag.debug ));
+      sprintf( sunset_time, "%s", sunset(&conf, flag.debug ));
+      if( flag.verbose == 1) printf( "sunrise=%s sunset=%s\n", sunrise_time, sunset_time );
+      update_almanac(  &conf, sunrise_time, sunset_time, flag.debug );
     }
-    if( flag.mysql==1 ) { 
-        if( flag.debug == 1 ) printf( "Before Check Schema\n" ); 
-       	if( check_schema( &conf, &flag,  SCHEMA ) != 1 )
-            exit(-1);
-        if(flag.daterange==0 ) { //auto set the dates
-            if( flag.debug == 1 ) printf( "auto_set_dates\n" ); 
-            auto_set_dates( &conf, &flag);
-        }
+  }
+  if( flag.mysql==1 ) { 
+    if( flag.debug == 1 ) printf( "Before Check Schema\n" ); 
+    if( check_schema( &conf, &flag,  SCHEMA ) != 1 ) {
+      fprintf(stderr, "ERROR: Schema not correct");
+      exit(-1);
     }
+    if(flag.daterange==0 ) {
+      //auto set the dates
+      if( flag.debug == 1) printf( "Before auto_set_dates\n" ); 
+      auto_set_dates( &conf, &flag);
+    }
+  } else {
+    // No MySQL
+    if( flag.verbose == 1 ) printf( "QUERY RANGE    from %s to %s\n", conf.datefrom, conf.dateto ); 
+  }
+  // Collect data from inverter
+  if((flag.location==0)||(flag.mysql==0)||no_dark==1||is_light( &conf, &flag )) {
+    if (flag.debug == 1) printf("Collecting data from inverter address %s\n",conf.BTAddress);
+    //Connect to Inverter
+    if ((s = ConnectSocket( &conf )) < 0 ) {
+      fprintf(stderr, "ERROR: Cannot connect to socket");
+      exit( -1 );
+    }
+    // Read inverter codes
+    if (flag.file == 1)
+      fp=fopen(conf.File,"r");
     else
-        if( flag.verbose == 1 ) printf( "QUERY RANGE    from %s to %s\n", conf.datefrom, conf.dateto ); 
-    if(( flag.daterange==1 )&&((flag.location=0)||(flag.mysql==0)||no_dark==1||is_light( &conf, &flag )))
-    {
-	if (flag.debug ==1) printf("Address %s\n",conf.BTAddress);
-        //Connect to Inverter
-        if ((s = ConnectSocket( &conf, &flag )) < 0 )
-           exit( -1 );
+      fp=fopen("/etc/sma.in","r");
 
-        if (flag.file ==1)
-	  fp=fopen(conf.File,"r");
-        else
-	  fp=fopen("/etc/sma.in","r");
+    InverterCommand( "init", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
+    InverterCommand( "login", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
+    InverterCommand( "typelabel", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
+    InverterCommand( "typelabel", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
+    InverterCommand( "startuptime", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
+    InverterCommand( "getacvoltage", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
+    InverterCommand( "getenergyproduction", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
+    InverterCommand( "getspotdcpower", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
+    InverterCommand( "getspotdcvoltage", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
+    InverterCommand( "getspotacpower", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
+    InverterCommand( "getgridfreq", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
+    InverterCommand( "maxACPower", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
+    InverterCommand( "maxACPowerTotal", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
+    InverterCommand( "ACPowerTotal", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
+    InverterCommand( "DeviceStatus", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
+    InverterCommand( "getrangedata", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
+    InverterCommand( "logoff", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
+  }
 
-   	// convert address
-/*
-   	dest_address[5] = conv(strtok(conf.BTAddress,":"));
-   	dest_address[4] = conv(strtok(NULL,":"));
-   	dest_address[3] = conv(strtok(NULL,":"));
-   	dest_address[2] = conv(strtok(NULL,":"));
-   	dest_address[1] = conv(strtok(NULL,":"));
-   	dest_address[0] = conv(strtok(NULL,":"));
-*/
-
-        OpenInverter( &conf, &flag, &unit,  &s, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-        InverterCommand( "login", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen  );
-        InverterCommand( "typelabel", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-        InverterCommand( "typelabel", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-        InverterCommand( "startuptime", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-        InverterCommand( "getacvoltage", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-        InverterCommand( "getenergyproduction", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-        InverterCommand( "getspotdcpower", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-        InverterCommand( "getspotdcvoltage", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-        InverterCommand( "getspotacpower", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-        InverterCommand( "getgridfreq", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-        InverterCommand( "maxACPower", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-        InverterCommand( "maxACPowerTotal", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-        InverterCommand( "ACPowerTotal", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-        InverterCommand( "DeviceStatus", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-        InverterCommand( "getrangedata", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-        InverterCommand( "logoff", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
+  // Store in database
+  if ((flag.post==1)&&(flag.mysql==1)&&(error==0)) {
+    // Connect to database
+    OpenMySqlDatabase( conf.MySqlHost, conf.MySqlUser, conf.MySqlPwd, conf.MySqlDatabase );
+    for( i=1; i<archdatalen; i++ ) { //Start at 1 as the first record is a dummy 
+      sprintf(SQLQUERY,"INSERT INTO DayData ( DateTime, Inverter, Serial, CurrentPower, EtotalToday ) VALUES ( FROM_UNIXTIME(%ld),\'%s\',%ld,%0.f, %.3f ) ON DUPLICATE KEY UPDATE DateTime=Datetime, Inverter=VALUES(Inverter), Serial=VALUES(Serial), CurrentPower=VALUES(CurrentPower), EtotalToday=VALUES(EtotalToday)",(archdatalist+i)->date, (archdatalist+i)->inverter, (archdatalist+i)->serial, (archdatalist+i)->current_value, (archdatalist+i)->accum_value );
+      if (flag.debug == 1) printf("SQL Query: %s\n",SQLQUERY);
+      DoQuery(SQLQUERY);
     }
+    mysql_close(conn);
 
-    if ((flag.post ==1)&&(flag.mysql==1)&&(error==0)){
-	/* Connect to database */
-        OpenMySqlDatabase( conf.MySqlHost, conf.MySqlUser, conf.MySqlPwd, conf.MySqlDatabase );
-        for( i=1; i<archdatalen; i++ ) //Start at 1 as the first record is a dummy
-        {
-	    sprintf(SQLQUERY,"INSERT INTO DayData ( DateTime, Inverter, Serial, CurrentPower, EtotalToday ) VALUES ( FROM_UNIXTIME(%ld),\'%s\',%ld,%0.f, %.3f ) ON DUPLICATE KEY UPDATE DateTime=Datetime, Inverter=VALUES(Inverter), Serial=VALUES(Serial), CurrentPower=VALUES(CurrentPower), EtotalToday=VALUES(EtotalToday)",(archdatalist+i)->date, (archdatalist+i)->inverter, (archdatalist+i)->serial, (archdatalist+i)->current_value, (archdatalist+i)->accum_value );
-	    if (flag.debug == 1) printf("%s\n",SQLQUERY);
-	    DoQuery(SQLQUERY);
-            //getchar();
-        }
-        mysql_close(conn);
+    // Update Mysql with live data
+    live_mysql( conf, flag, livedatalist, livedatalen );
+    mysql_free_result( res );
+    mysql_close(conn);
+  }
 
-        char 			batch_string[400];
-        int			batch_count = 0;
-        unsigned long long 	inverter_serial;
-        
-        //Update Mysql with live data 
-        live_mysql( conf, flag, livedatalist, livedatalen );
-        printf( "\nbefore update to PVOutput" ); getchar();
-        /* Connect to database */
-        OpenMySqlDatabase( conf.MySqlHost, conf.MySqlUser, conf.MySqlPwd, conf.MySqlDatabase );
-	inverter_serial=(unit[0].Serial[0]<<24)+(unit[0].Serial[1]<<16)+(unit[0].Serial[2]<<8)+unit[0].Serial[3];
-        sprintf(SQLQUERY,"SELECT Value FROM LiveData WHERE Inverter = \'%s\' and Serial=\'%lld\' and Description=\'Max Phase 1\' ORDER BY DateTime DESC LIMIT 1", unit[0].Inverter, inverter_serial  );
-        if (flag.debug == 1) printf("%s\n",SQLQUERY); //getchar();
-        DoQuery(SQLQUERY);
- 
-        if( mysql_num_rows(res) == 1 )
-        {
-            if ((row = mysql_fetch_row(res)))
-            {
-                max_output = atoi(row[0]) * 1.2;
-            }
-            mysql_free_result( res );
-        }
-        sprintf(SQLQUERY,"SELECT DATE_FORMAT(dd1.DateTime,\'%%Y%%m%%d\'), DATE_FORMAT(dd1.DateTime,\'%%H:%%i\'), ROUND((dd1.ETotalToday-dd2.EtotalToday)*1000), if( dd1.CurrentPower < %d ,dd1.CurrentPower, %d ), dd1.DateTime FROM DayData as dd1 join DayData as dd2 on dd2.DateTime=DATE_FORMAT(dd1.DateTime,\'%%Y-%%m-%%d 00:00:00\') WHERE dd1.DateTime>=Date_Sub(CURDATE(),INTERVAL 13 DAY) and dd1.PVOutput IS NULL and dd1.CurrentPower>0 ORDER BY dd1.DateTime ASC", max_output, max_output );
-        if (flag.debug == 1) printf("%s\n",SQLQUERY);
-        DoQuery(SQLQUERY);
-        batch_count=0;
-        if( mysql_num_rows(res) == 1 )
-        {
-            if ((row = mysql_fetch_row(res)))  //Need to update these
-            {
-	        sprintf(compurl,"%s?d=%s&t=%s&v1=%s&v2=%s&key=%s&sid=%s",conf.PVOutputURL,row[0],row[1],row[2],row[3],conf.PVOutputKey,conf.PVOutputSid);
-	        if (flag.debug == 1) printf("url = %s\n",compurl); 
-                {
-                    
-	            curl = curl_easy_init();
-	            if (curl){
-	                curl_easy_setopt(curl, CURLOPT_URL, compurl);
-		        curl_easy_setopt(curl, CURLOPT_FAILONERROR, compurl);
-		        result = curl_easy_perform(curl);
-	                if (flag.debug == 1) printf("result = %d\n",result);
-		        curl_easy_cleanup(curl);
-                        if( result==0 ) 
-                        {
-                            sprintf(SQLQUERY,"UPDATE DayData  set PVOutput=NOW() WHERE DateTime=\"%s\"  ", row[4] );
-                            if (flag.debug == 1) printf("%s\n",SQLQUERY);
-                            DoQuery(SQLQUERY);
-                        }
-	            }
-                }
-            }
-        }
-        else
-        {
-            while ((row = mysql_fetch_row(res)))  //Need to update these
-            {
-                sleep(2);
-                if( batch_count > 0 )
-                    sprintf( batch_string,"%s;%s,%s,%s,%s", batch_string, row[0], row[1], row[2], row[3] ); 
-                else
-                    sprintf( batch_string,"%s,%s,%s,%s", row[0], row[1], row[2], row[3] ); 
-                batch_count++;
-                if( batch_count == 30 )
-                {
-	            curl = curl_easy_init();
-	            if (curl){
-	                sprintf(compurl,"http://pvoutput.org/service/r2/addbatchstatus.jsp?data=%s&key=%s&sid=%s",batch_string,conf.PVOutputKey,conf.PVOutputSid);
-	                if (flag.debug == 1) printf("url = %s\n",compurl); 
-	                curl_easy_setopt(curl, CURLOPT_URL, compurl);
-		        curl_easy_setopt(curl, CURLOPT_FAILONERROR, compurl);
-		        result = curl_easy_perform(curl);
-                        sleep(1);
-	                if (flag.debug == 1) printf("result = %d\n",result);
-		        curl_easy_cleanup(curl);
-                        if( result==0 ) 
-                        {
-                           sprintf(SQLQUERY,"SELECT DATE_FORMAT(dd1.DateTime,\'%%Y%%m%%d\'), DATE_FORMAT(dd1.DateTime,\'%%H:%%i\'), ROUND((dd1.ETotalToday-dd2.EtotalToday)*1000), dd1.CurrentPower, dd1.DateTime FROM DayData as dd1 join DayData as dd2 on dd2.DateTime=DATE_FORMAT(dd1.DateTime,\'%%Y-%%m-%%d 00:00:00\') WHERE dd1.DateTime>=Date_Sub(CURDATE(),INTERVAL 13 DAY) and dd1.PVOutput IS NULL and dd1.CurrentPower>0 ORDER BY dd1.DateTime ASC limit %d", batch_count );
-                           if (flag.debug == 1) printf("%s\n",SQLQUERY);
-                           DoQuery1(SQLQUERY);
-                           while ((row1 = mysql_fetch_row(res1)))  //Need to update these
-                           {
-                               sprintf(SQLQUERY,"UPDATE DayData set PVOutput=NOW() WHERE DateTime=\"%s\"  ", row1[4] );
-                               if (flag.debug == 1) printf("%s\n",SQLQUERY);
-                               DoQuery2(SQLQUERY);
-                           }
-                           mysql_free_result( res1 );
-                        }
-                        else
-                            break;
-	            }
-                    batch_count = 0;
-                    strcpy( batch_string, "" ); //NULL the string
-                }
-            }
-            if( batch_count > 0 )
-            {
-	        curl = curl_easy_init();
-	        if (curl){
-	            sprintf(compurl,"http://pvoutput.org/service/r2/addbatchstatus.jsp?data=%s&key=%s&sid=%s",batch_string,conf.PVOutputKey,conf.PVOutputSid);
-	            if (flag.debug == 1) printf("url = %s\n",compurl); 
-	            curl_easy_setopt(curl, CURLOPT_URL, compurl);
-	            curl_easy_setopt(curl, CURLOPT_FAILONERROR, compurl);
-	            result = curl_easy_perform(curl);
-                    sleep(1);
-	            if (flag.debug == 1) printf("result = %d\n",result);
-		    curl_easy_cleanup(curl);
-                    if( result==0 ) 
-                    {
-                       sprintf(SQLQUERY,"SELECT DATE_FORMAT(dd1.DateTime,\'%%Y%%m%%d\'), DATE_FORMAT(dd1.DateTime,\'%%H:%%i\'), ROUND((dd1.ETotalToday-dd2.EtotalToday)*1000), dd1.CurrentPower, dd1.DateTime FROM DayData as dd1 join DayData as dd2 on dd2.DateTime=DATE_FORMAT(dd1.DateTime,\'%%Y-%%m-%%d 00:00:00\') WHERE dd1.DateTime>=Date_Sub(CURDATE(),INTERVAL 1 DAY) and dd1.PVOutput IS NULL and dd1.CurrentPower>0 ORDER BY dd1.DateTime ASC limit %d", batch_count );
-                       if (flag.debug == 1) printf("%s\n",SQLQUERY);
-                       DoQuery1(SQLQUERY);
-                       while ((row1 = mysql_fetch_row(res1)))  //Need to update these
-                       {
-                           sprintf(SQLQUERY,"UPDATE DayData set PVOutput=NOW() WHERE DateTime=\"%s\"  ", row1[4] );
-                           if (flag.debug == 1) printf("%s\n",SQLQUERY);
-                           DoQuery2(SQLQUERY);
-                       }
-                       mysql_free_result( res1 );
-                    }
-	        }
-                batch_count = 0;
-            }
-        }
-        mysql_free_result( res );
-        mysql_close(conn);
-    }
-
-    if( archdatalen > 0 )
-        free( archdatalist );
-    archdatalen=0;
-    if( livedatalen > 0 )
-        free( livedatalist );
-    livedatalen=0;
-    close(s);
-    if ((flag.repost ==1)&&(error==0)){
-        printf( "\nrepost\n" ); //getchar();
-        sma_repost( &conf );
-}
+  // Clean up data
+  if( archdatalen > 0 )
+    free( archdatalist );
+  archdatalen=0;
+  if( livedatalen > 0 )
+    free( livedatalist );
+  livedatalen=0;
+  close(s);
 
 return 0;
 }

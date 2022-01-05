@@ -1,30 +1,23 @@
 # Configuration for smatoool bluetooth inverter logger
 #
-# Copy this to smatool.conf this is to avoid damaging your 
-# config on every update
+# Copy this to /etc/smatool.conf
 #
 # Not all fields are compulsory
 #
-# Inverter (compulsory bluetooth address) use "hcitool scan" to find
-BTAddress
+# Inverter bluetooth address (compulsory) use "hcitool scan" to find
+BTAddress 00:11:22:33:44:55
 # Inverter Bluetooth timeout (optional) defaults to 5 seconds
-BTTimeout
+BTTimeout 5
 # Inverter User password (compulsory)
-Password
-# Config file (optional) defaults to ./smatool.conf
-Config
+Password 0000
 # String file (compulsory) data strings to drive the system
-File		./sma.in.new
+File	/etc/sma.in.new
 # Location (optional) required to avoid waking up system in the dark. 
 # Requires  mysql below.
-Latitude
-Longitude
+Latitude 51.0
+Longitude 5.5
 # Mysql (optional) required for storing data
 MySqlHost	localhost
 MySqlDatabase	smatool
 MySqlUser
 MySqlPwd
-# PVOutput.org specific data if you are outputting to PVOutput.org.
-PVOutputURL	http://pvoutput.org/service/r2/addstatus.jsp
-PVOutputKey
-PVOutputSid

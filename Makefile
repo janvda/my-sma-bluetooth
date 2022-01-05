@@ -18,10 +18,11 @@ sma_pvoutput.o: sma_pvoutput.c
 sb_commands.o: sb_commands.c
 	gcc -O2 -c sb_commands.c
 clean:
-	rm *.o
+	rm -f *.o
+	rm -f smatool
 install:
 	install -m 755 smatool /usr/local/bin
-	install -m 644 sma.in.new /usr/local/bin
-	install -m 644 smatool.conf.new /usr/local/etc
-	install -m 644 smatool.xml /usr/local/bin
+	install -m 644 sma.in.new /etc
+	install -m 644 smatool.conf.new /etc/smatool.conf
+	install -m 644 smatool.xml /etc
 
