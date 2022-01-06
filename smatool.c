@@ -1612,14 +1612,15 @@ int main(int argc, char **argv)
     InverterCommand( "DeviceStatus", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
     InverterCommand( "getrangedata", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
     InverterCommand( "logoff", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-  }
+  } else
+    if( flag.verbose == 1) printf("Not waking up inverter\n");
 
   // Store in database
   if (flag.mysql==1) {
     if( flag.debug == 1) printf( "Before store in database\n" ); 
     // Connect to database
     OpenMySqlDatabase( conf.MySqlHost, conf.MySqlUser, conf.MySqlPwd, conf.MySqlDatabase );
-    printf( "Storing archive data (%d records)\n",  archdatalen);
+    if(archdatalen > 0) printf( "Storing archive data (%d records)\n",  archdatalen);
     for( i=1; i<archdatalen; i++ ) { //Start at 1 as the first record is a dummy 
       sprintf(SQLQUERY,"INSERT INTO DayData ( DateTime, Inverter, Serial, CurrentPower, EtotalToday ) VALUES ( FROM_UNIXTIME(%ld),\'%s\',%ld,%0.f, %.3f ) ON DUPLICATE KEY UPDATE DateTime=Datetime, Inverter=VALUES(Inverter), Serial=VALUES(Serial), CurrentPower=VALUES(CurrentPower), EtotalToday=VALUES(EtotalToday)",(archdatalist+i)->date, (archdatalist+i)->inverter, (archdatalist+i)->serial, (archdatalist+i)->current_value, (archdatalist+i)->accum_value );
       if (flag.debug == 1) printf("SQL Query: %s\n",SQLQUERY);
@@ -1628,7 +1629,7 @@ int main(int argc, char **argv)
     mysql_close(conn);
 
     // Update Mysql with live data
-    printf( "Storing live data (%d records)\n",  livedatalen); 
+    if(livedatalen > 0) printf( "Storing live data (%d records)\n",  livedatalen); 
     live_mysql( conf, flag, livedatalist, livedatalen );
 //    mysql_free_result( res );
 //    mysql_close(conn);
@@ -1642,6 +1643,6 @@ int main(int argc, char **argv)
     free( livedatalist );
   livedatalen=0;
   close(s);
-
+  if( flag.verbose == 1) printf("Done.\n");
   return 0;
 }
