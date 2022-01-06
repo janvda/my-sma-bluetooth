@@ -688,9 +688,12 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
               break;  
 
             case 7: // extract 2nd address
-              printf( "Address = " );
-              for( i=0; i<6; i++ ) {
-                printf( "%02x ", received[26+i] );
+              if (flag->verbose == 1) {
+                printf( "Address = " );
+                for( i=0; i<6; i++ ) {
+                  printf( "%02x ", received[26+i] );
+                }
+                printf( "\n");
               }
               for (i=0; i<6; i++ ) {
                 conf->MyBTAddress[i]=received[26+i];
@@ -750,7 +753,6 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
               finished=0;
               ptotal=0;
               idate=0;
-              printf( "Archive data:\n" );
               while( finished != 1 ) {
                 if(( data = ReadStream( conf, flag,  &readRecord, s, received, &rr, data, &datalen, last_sent, cc, &terminated, &togo )) != NULL ) {
                   j=0;
@@ -764,7 +766,7 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
                       if( prev_idate == 0 ) prev_idate = idate-300;
                       ConvertStreamtoFloat( datarecord+4, 8, &gtotal );
                       if((*archdatalen) == 0 ) ptotal = gtotal;
-                      printf("\n%4d-%02d-%02d %02d:%02d:%02d  total=%.3f kWh current=%.0f Watts togo=%d i=%d datalen=%d", year, month, day, hour, minute,second, gtotal/1000, (gtotal-ptotal)*12, togo, i, datalen);
+                      printf("%4d-%02d-%02d %02d:%02d:%02d  total=%.3f kWh current=%.0f Watts togo=%d i=%d datalen=%d\n", year, month, day, hour, minute,second, gtotal/1000, (gtotal-ptotal)*12, togo, i, datalen);
                       if( idate != prev_idate+300 ) {
                         printf( "Date Error! prev=%d current=%d\n", (int)prev_idate, (int)idate );
                         break;
@@ -787,7 +789,7 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
                   if( togo == 0 ) {
                     finished=1;
                   } else {
-                    if (flag->debug == 1) printf("Still records to go (%d)\n", togo);
+                    if (flag->debug == 1) printf("\nStill records to go (%d)\n", togo);
                     if( read_bluetooth( conf, flag, &readRecord, s, &rr, received, cc, last_sent, &terminated ) != 0 ) {
                       if (flag->debug == 1) printf("read_blutooth succeeded\n");
                       found=0;
@@ -975,6 +977,7 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
                       case 99 :
                         idate=ConvertStreamtoTime( data+i+4, 4, &idate, &day, &month, &year, &hour, &minute, &second  );
                         datastring = ConvertStreamtoString( data+i+8, datalength );
+                        if (flag->debug == 1) printf("datastring = %s (from stream '%s', length %d)\n", datastring, data+i+8, datalength);
                         printf("%4d-%02d-%02d %02d:%02d:%02d %-30s = '%s' '%-20s'\n", year, month, day, hour, minute, second, conf->returnkeylist[return_key].description, datastring, conf->returnkeylist[return_key].units );
                         UpdateLiveList( conf, flag, unit[0], "%s",  idate, conf->returnkeylist[return_key].description, -1.0, -1, datastring, conf->returnkeylist[return_key].units, conf->returnkeylist[return_key].persistent, livedatalen, livedatalist );
                         free( datastring );

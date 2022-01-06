@@ -32,7 +32,7 @@ void OpenMySqlDatabase (char *server, char *user, char *password, char *database
   // Connect to database
   if (!mysql_real_connect(conn, server, user, password, database, 0, NULL, 0)) {
     fprintf(stderr, "%s\n", mysql_error(conn));
-    exit(0);
+    exit(1);
   }
 }
 
@@ -43,14 +43,14 @@ void CloseMySqlDatabase()
   mysql_close(conn);
 }
 
-int DoQuery (char *query){
+void DoQuery (char *query){
   /* execute query */
 
-  if (mysql_real_query(conn, query, strlen(query))){
-    fprintf(stderr, "%s\n", mysql_error(conn));
+  if (mysql_real_query(conn, query, strlen(query))) {
+    fprintf(stderr, "ERROR: %s\n", mysql_error(conn));
+    exit(1);
   }
   res = mysql_store_result(conn);
-  return *mysql_error(conn);
 }
 
 int install_mysql_tables( ConfType * conf, FlagType * flag, char *SCHEMA )
@@ -142,7 +142,7 @@ int install_mysql_tables( ConfType * conf, FlagType * flag, char *SCHEMA )
 void update_mysql_tables( ConfType * conf, FlagType * flag )
 /*  Do mysql table schema updates */
 {
-  int schema_value=0;
+  int schema_value=0, result;
   MYSQL_ROW row;
   char SQLQUERY[1000];
 
@@ -162,7 +162,9 @@ void update_mysql_tables( ConfType * conf, FlagType * flag )
   if( schema_value == 1 ) { //Upgrade from 1 to 2
     sprintf(SQLQUERY,"ALTER TABLE `DayData` CHANGE `ETotalToday` `ETotalToday` DECIMAL(10,3) NULL DEFAULT NULL" );
     if (flag->debug == 1) printf("%s\n",SQLQUERY);
-    DoQuery(SQLQUERY);
+    DoQuery(SQLQUERY);      
+    if (flag->debug == 1) printf("SQL res = \n",res);
+
     sprintf( SQLQUERY, "UPDATE `settings` SET `value` = \'schema\', `data` = 2 " );
     if (flag->debug == 1) printf("%s\n",SQLQUERY);
     DoQuery(SQLQUERY);
@@ -215,6 +217,7 @@ void update_mysql_tables( ConfType * conf, FlagType * flag )
     if (flag->debug == 1) printf("%s\n",SQLQUERY);
     DoQuery(SQLQUERY);
   }
+  printf("Database schema up to date (version 4)\n");
   mysql_close(conn);
 }
 
@@ -258,34 +261,27 @@ void live_mysql( ConfType conf, FlagType flag, LiveDataType *livedatalist, int l
 
   OpenMySqlDatabase( conf.MySqlHost, conf.MySqlUser, conf.MySqlPwd, conf.MySqlDatabase);
   for( i=0; i<livedatalen; i++ ) {
-    loctime = localtime(&(livedatalist+i)->date);
-    day = loctime->tm_mday;
-    month = loctime->tm_mon +1;
-    year = loctime->tm_year + 1900;
-    hour = loctime->tm_hour;
-    minute = loctime->tm_min;
-    second = loctime->tm_sec;
 
-    live_data=1;
-    if( (livedatalist+i)->Persistent == 1 ) {
-      sprintf( SQLQUERY, "SELECT IF (Value = \"%s\",NULL,Value) FROM LiveData where Inverter=\"%s\" and Serial=%llu and Description=\"%s\" ORDER BY DateTime DESC LIMIT 1", (livedatalist+i)->Value, (livedatalist+i)->inverter, (livedatalist+i)->serial, (livedatalist+i)->Description );
-      if (flag.debug == 1) printf("%s\n",SQLQUERY);
-      if( DoQuery(SQLQUERY) == 0 ) {
-        if ((row = mysql_fetch_row(res))) {  //if there is a result, update the row
-          if( row[0] == NULL ) {
-            if (flag.debug == 1) printf("No live data for this inverter (or value already present?)\n");
-            live_data=0;
-          }
-        }
-        mysql_free_result(res);
-      }
-    }
-    if( live_data==1 ) {
-      sprintf(datetime, "%d-%02d-%02d %02d:%02d:%02d", year, month, day, hour, minute, second );
-      sprintf(SQLQUERY,"INSERT INTO LiveData ( DateTime, Inverter, Serial, Description, Value, Units ) VALUES ( \'%s\', \'%s\', %lld, \'%s\', \'%s\', \'%s\'  ) ON DUPLICATE KEY UPDATE DateTime=Datetime, Inverter=VALUES(Inverter), Serial=VALUES(Serial), Description=VALUES(Description), Description=VALUES(Description), Value=VALUES(Value), Units=VALUES(Units)", datetime, (livedatalist+i)->inverter, (livedatalist+i)->serial, (livedatalist+i)->Description, (livedatalist+i)->Value, (livedatalist+i)->Units);
+// EZ: Not sure what this is:
+//    live_data=1;
+//    if( (livedatalist+i)->Persistent == 1 ) {
+//      sprintf( SQLQUERY, "SELECT IF (Value = \"%s\",NULL,Value) FROM LiveData where Serial=%llu ORDER BY DateTime DESC LIMIT 1", (livedatalist+i)->Value, (livedatalist+i)->serial, (livedatalist+i)->Description );
+//      if (flag.debug == 1) printf("%s\n",SQLQUERY);
+//      DoQuery(SQLQUERY);
+//      if ((row = mysql_fetch_row(res))) {  //if there is a result, update the row
+//        if( row[0] == NULL ) {
+//          if (flag.debug == 1) printf("No live data for this inverter (or value already present?)\n");
+//          live_data=0;
+//        }
+//      }
+//      mysql_free_result(res);
+//    }
+//    if( live_data==1 ) {
+      sprintf(SQLQUERY,"INSERT INTO LiveData ( DateTime, Inverter, Serial, Description, Value, Units ) VALUES ( FROM_UNIXTIME(%ld), \'%s\', %lld, \'%s\', \'%s\', \'%s\'  ) ON DUPLICATE KEY UPDATE DateTime=Datetime, Inverter=VALUES(Inverter), Serial=VALUES(Serial), Description=VALUES(Description), Description=VALUES(Description), Value=VALUES(Value), Units=VALUES(Units)", (livedatalist+i)->date, (livedatalist+i)->inverter, (livedatalist+i)->serial, (livedatalist+i)->Description, (livedatalist+i)->Value, (livedatalist+i)->Units);
       if (flag.debug == 1) printf("Live Data SQL query: %s\n",SQLQUERY);
       DoQuery(SQLQUERY);
-    }
+//    }
   }
   mysql_close(conn);
+  if (flag.debug == 1) printf("End live_mysql\n");
 }

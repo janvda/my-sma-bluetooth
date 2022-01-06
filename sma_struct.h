@@ -81,8 +81,6 @@ typedef struct{
   unsigned int test;      /* is test only */
   unsigned int mysql;     /* write to MySQL*/
   unsigned int file;      /* use sma.in file */
-  unsigned int post;      /* do post */
-  unsigned int repost;    /* do repost */
 } FlagType;
 
 typedef struct{

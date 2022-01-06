@@ -847,21 +847,24 @@ int is_light( ConfType * conf, FlagType * flag )
   MYSQL_ROW row;
   char SQLQUERY[200];
 
-  OpenMySqlDatabase( conf->MySqlHost, conf->MySqlUser, conf->MySqlPwd, conf->MySqlDatabase);
-  //Get Start of day value
-  sprintf(SQLQUERY,"SELECT if(sunrise < NOW(),1,0) FROM Almanac WHERE date= DATE_FORMAT( NOW(), \"%%Y-%%m-%%d\" ) " );
-  if (flag->debug == 1) printf("%s\n",SQLQUERY);
-  DoQuery(SQLQUERY);
-  if ((row = mysql_fetch_row(res)))  //if there is a result, update the row
-    if( atoi( (char *)row[0] ) == 0 ) light=0;
-  if( light ) {
-    sprintf(SQLQUERY,"SELECT if( dd.datetime > al.sunset,1,0) FROM DayData as dd left join Almanac as al on al.date=DATE(dd.datetime) and al.date=DATE(NOW()) WHERE 1 ORDER BY dd.datetime DESC LIMIT 1" );
+  if( flag->mysql == 1 ) {
+    OpenMySqlDatabase( conf->MySqlHost, conf->MySqlUser, conf->MySqlPwd, conf->MySqlDatabase);
+    //Get Start of day value
+    sprintf(SQLQUERY,"SELECT if(sunrise < NOW(),1,0) FROM Almanac WHERE date= DATE_FORMAT( NOW(), \"%%Y-%%m-%%d\" ) " );
     if (flag->debug == 1) printf("%s\n",SQLQUERY);
     DoQuery(SQLQUERY);
     if ((row = mysql_fetch_row(res)))  //if there is a result, update the row
-      if( atoi( (char *)row[0] ) == 1 ) light=0;
+      if( atoi( (char *)row[0] ) == 0 ) light=0;
+    if( light ) {
+      sprintf(SQLQUERY,"SELECT if( dd.datetime > al.sunset,1,0) FROM DayData as dd left join Almanac as al on al.date=DATE(dd.datetime) and al.date=DATE(NOW()) WHERE 1 ORDER BY dd.datetime DESC LIMIT 1" );
+      if (flag->debug == 1) printf("%s\n",SQLQUERY);
+      DoQuery(SQLQUERY);
+      if ((row = mysql_fetch_row(res)))  //if there is a result, update the row
+        if( atoi( (char *)row[0] ) == 1 ) light=0;
+    }
+    mysql_close(conn);
   }
-  mysql_close(conn);
+  if( flag->debug == 1 ) printf( "light = %d\n", light);
   return light;
 }
 
@@ -920,29 +923,24 @@ float ConvertStreamtoFloat( unsigned char * stream, int length, float * value )
 //Convert a recieved string to a value
 char * ConvertStreamtoString( unsigned char * stream, int length )
 {
-   int	i, j=0, nullvalue;
-   char * value;
-   
-   nullvalue = 1;
+  int i, j=0, nullvalue=1;
+  char * value;
 
-   value = malloc( sizeof(char)*10+1 );
-   for( i=0; i < length; i++ ) 
-   {
-      if( i%10 > j ) {
-            j++;
-	    value = realloc( value, sizeof(char)*10*j+1 );
-      }
-      if( stream[i] != 0xff ) //check if all ffs which is a null value 
-        nullvalue = 0;
-      if( stream[i] != 0 ) {
-         value[i] = stream[i];
-      }
-   }
-   if( nullvalue == 1 )
-      (*value) = 0; //Asigning null to 0 at this stage unless it breaks something
-   else
-      value[i]= 0; //string null termination
-   return (char *)value;
+  value = malloc( sizeof(char)*length+1 );
+  for( i=0; i < length; i++ ) {
+    if( stream[i] != 0xff ) //check if all ffs which is a null value 
+      nullvalue = 0;
+    if( stream[i] != 0 )
+      value[i] = stream[i];
+    else
+      break;
+  }
+  if( nullvalue == 1 )
+    (*value) = 0; //Asigning null to 0 at this stage unless it breaks something
+  else {
+    value[i]= 0; //string null termination
+  }
+  return (char *)value;
 }
 
 //read return value data from init file
@@ -1243,7 +1241,7 @@ int GetInverterSetting( ConfType *conf, FlagType * flag )
       if( line[0] != '#' ) {
         strcpy( value, "" ); //Null out value
         sscanf( line, "%s %s", variable, value );
-        if( flag->debug == 1 ) printf( "variable=%s value=%s\n", variable, value );
+        if( flag->debug == 1 ) printf( "Config file variable %s = %s\n", variable, value );
       }
     }
   }
@@ -1354,6 +1352,7 @@ void PrintHelp()
     printf( "  -f,  --file FILENAME                     command file default sma.in.new\n" );
     printf( "Location Information to calculate sunset and sunrise so inverter is not\n" );
     printf( "queried in the dark\n" );
+    printf( "  -n,  --nodark                            force querying inverter\n" );
     printf( "  -lat,  --latitude LATITUDE               location latitude -180 to 180 deg\n" );
     printf( "  -lon,  --longitude LONGITUDE             location longitude -90 to 90 deg\n" );
     printf( "Mysql database information\n" );
@@ -1371,120 +1370,111 @@ void PrintHelp()
 /* Init Config to default values */
 int ReadCommandConfig( ConfType *conf, FlagType *flag, int argc, char **argv, int * no_dark, int * install, int * update )
 {
-    int	i;
+  int i;
 
-    // these need validation checking at some stage TODO
-    for (i=1;i<argc;i++)			//Read through passed arguments
-    {
-	if ((strcmp(argv[i],"-v")==0)||(strcmp(argv[i],"--verbose")==0)) flag->verbose = 1;
-	else if ((strcmp(argv[i],"-d")==0)||(strcmp(argv[i],"--debug")==0)) {
-            flag->debug = 1;
-            flag->verbose = 1;
-        }
-	else if ((strcmp(argv[i],"-c")==0)||(strcmp(argv[i],"--config")==0)){
-	    i++;
-	    if(i<argc){
-		strcpy(conf->Config,argv[i]);
-	    }
-	}
-	else if (strcmp(argv[i],"--test")==0) flag->test=1;
-	else if ((strcmp(argv[i],"-from")==0)||(strcmp(argv[i],"--datefrom")==0)){
-	    i++;
-	    if(i<argc){
-		strcpy(conf->datefrom,argv[i]);
-	    }
-	}
-	else if ((strcmp(argv[i],"-to")==0)||(strcmp(argv[i],"--dateto")==0)){
-	    i++;
-	    if(i<argc){
-		strcpy(conf->dateto,argv[i]);
-	    }
-	}
-	else if (strcmp(argv[i],"-repost")==0){
-	    i++;
-            flag->repost=1;
-	}
-        else if ((strcmp(argv[i],"-a")==0)||(strcmp(argv[i],"--address")==0)){
-            i++;
-            if (i<argc){
-	        strcpy(conf->BTAddress,argv[i]);
-            }
-	}
-        else if ((strcmp(argv[i],"-t")==0)||(strcmp(argv[i],"--timeout")==0)){
-            i++;
-            if (i<argc){
-	        conf->bt_timeout = atoi(argv[i]);
-            }
-	}
-        else if ((strcmp(argv[i],"-p")==0)||(strcmp(argv[i],"--password")==0)){
-            i++;
-            if (i<argc){
-	        strcpy(conf->Password,argv[i]);
-            }
-	}
-        else if ((strcmp(argv[i],"-f")==0)||(strcmp(argv[i],"--file")==0)){
-            i++;
-            if (i<argc){
-	        strcpy(conf->File,argv[i]);
-            }
-	}
-	else if ((strcmp(argv[i],"-n")==0)||(strcmp(argv[i],"--nodark")==0)) (*no_dark)=1;
-
-	else if ((strcmp(argv[i],"-lat")==0)||(strcmp(argv[i],"--latitude")==0)){
-	    i++;
-	    if(i<argc){
-		conf->latitude_f=atof(argv[i]);
-	    }
-	}
-	else if ((strcmp(argv[i],"-long")==0)||(strcmp(argv[i],"--longitude")==0)){
-	    i++;
-	    if(i<argc){
-		conf->longitude_f=atof(argv[i]);
-	    }
-	}
-	else if ((strcmp(argv[i],"-H")==0)||(strcmp(argv[i],"--mysqlhost")==0)){
-            i++;
-            if (i<argc){
-		strcpy(conf->MySqlHost,argv[i]);
-            }
-        }
-	else if ((strcmp(argv[i],"-D")==0)||(strcmp(argv[i],"--mysqlcwdb")==0)){
-            i++;
-            if (i<argc){
-		strcpy(conf->MySqlDatabase,argv[i]);
-            }
-        }
-	else if ((strcmp(argv[i],"-U")==0)||(strcmp(argv[i],"--mysqluser")==0)){
-            i++;
-            if (i<argc){
-		strcpy(conf->MySqlUser,argv[i]);
-            }
-        }
-	else if ((strcmp(argv[i],"-P")==0)||(strcmp(argv[i],"--mysqlpwd")==0)){
-            i++;
-            if (i<argc){
-		strcpy(conf->MySqlPwd,argv[i]);
-            }
-	}
-	else if ((strcmp(argv[i],"-h")==0) || (strcmp(argv[i],"--help") == 0 ))
-        {
-           PrintHelp();
-           return( -1 );
-        }
-	else if (strcmp(argv[i],"--INSTALL")==0) (*install)=1;
-	else if (strcmp(argv[i],"--UPDATE")==0) (*update)=1;
-        else
-        {
-           printf("Bad Syntax\n\n" );
-           for( i=0; i< argc; i++ )
-             printf( "%s ", argv[i] );
-           printf( "\n\n" );
-
-           PrintHelp();
-           return( -1 );
-        }
+  // these need validation checking at some stage TODO
+  for (i=1;i<argc;i++) { //Read through passed arguments
+    if ((strcmp(argv[i],"-v")==0)||(strcmp(argv[i],"--verbose")==0)) flag->verbose = 1;
+    else if ((strcmp(argv[i],"-d")==0)||(strcmp(argv[i],"--debug")==0)) {
+      flag->debug = 1;
+      flag->verbose = 1;
     }
-    return( 0 );
+    else if ((strcmp(argv[i],"-c")==0)||(strcmp(argv[i],"--config")==0)) {
+      i++;
+      if(i<argc) {
+        strcpy(conf->Config,argv[i]);
+      }
+    }
+    else if (strcmp(argv[i],"--test")==0) flag->test=1;
+    else if ((strcmp(argv[i],"-from")==0)||(strcmp(argv[i],"--datefrom")==0)) {
+      i++;
+      if(i<argc) {
+        strcpy(conf->datefrom,argv[i]);
+      }
+    }
+    else if ((strcmp(argv[i],"-to")==0)||(strcmp(argv[i],"--dateto")==0)) {
+      i++;
+      if(i<argc){
+        strcpy(conf->dateto,argv[i]);
+      }
+    }
+    else if ((strcmp(argv[i],"-a")==0)||(strcmp(argv[i],"--address")==0)){
+      i++;
+      if (i<argc){
+        strcpy(conf->BTAddress,argv[i]);
+      }
+    }
+    else if ((strcmp(argv[i],"-t")==0)||(strcmp(argv[i],"--timeout")==0)){
+      i++;
+      if (i<argc){
+        conf->bt_timeout = atoi(argv[i]);
+      }
+    }
+    else if ((strcmp(argv[i],"-p")==0)||(strcmp(argv[i],"--password")==0)){
+      i++;
+      if (i<argc){
+        strcpy(conf->Password,argv[i]);
+      }
+    }
+    else if ((strcmp(argv[i],"-f")==0)||(strcmp(argv[i],"--file")==0)){
+      i++;
+      if (i<argc){
+        strcpy(conf->File,argv[i]);
+      }
+    }
+    else if ((strcmp(argv[i],"-n")==0)||(strcmp(argv[i],"--nodark")==0)) (*no_dark)=1;
+    else if ((strcmp(argv[i],"-lat")==0)||(strcmp(argv[i],"--latitude")==0)){
+      i++;
+	    if(i<argc){
+        conf->latitude_f=atof(argv[i]);
+	    }
+    }
+    else if ((strcmp(argv[i],"-long")==0)||(strcmp(argv[i],"--longitude")==0)){
+	    i++;
+	    if(i<argc){
+        conf->longitude_f=atof(argv[i]);
+	    }
+    }
+    else if ((strcmp(argv[i],"-H")==0)||(strcmp(argv[i],"--mysqlhost")==0)){
+      i++;
+      if (i<argc){
+        strcpy(conf->MySqlHost,argv[i]);
+      }
+    }
+    else if ((strcmp(argv[i],"-D")==0)||(strcmp(argv[i],"--mysqlcwdb")==0)){
+      i++;
+      if (i<argc){
+        strcpy(conf->MySqlDatabase,argv[i]);
+      }
+    }
+    else if ((strcmp(argv[i],"-U")==0)||(strcmp(argv[i],"--mysqluser")==0)){
+      i++;
+      if (i<argc){
+        strcpy(conf->MySqlUser,argv[i]);
+      }
+    }
+    else if ((strcmp(argv[i],"-P")==0)||(strcmp(argv[i],"--mysqlpwd")==0)){
+      i++;
+      if (i<argc){
+        strcpy(conf->MySqlPwd,argv[i]);
+      }
+    }
+    else if ((strcmp(argv[i],"-h")==0) || (strcmp(argv[i],"--help") == 0 )) {
+      PrintHelp();
+      return( -1 );
+    }
+    else if (strcmp(argv[i],"--INSTALL")==0) (*install)=1;
+    else if (strcmp(argv[i],"--UPDATE")==0) (*update)=1;
+    else {
+      printf("Bad Syntax\n\n" );
+      for( i=0; i< argc; i++ )
+        printf( "%s ", argv[i] );
+      printf( "\n\n" );
+      PrintHelp();
+      return( -1 );
+    }
+  }
+  return( 0 );
 }
 
 char * debugdate()
@@ -1515,7 +1505,6 @@ int main(int argc, char **argv)
   unsigned char received[1024];
   int i,s;
   int install=0, update=0, no_dark=0;
-  int error=0;
   unsigned char tzhex[2] = { 0 };
   char SQLQUERY[1024];
   int archdatalen=0, livedatalen=0;
@@ -1568,7 +1557,7 @@ int main(int argc, char **argv)
   SetInverterType( &conf, &unit );
   // Get Local Timezone offset in seconds
   get_timezone_in_seconds( &flag, tzhex );
-    // Location based information to avoid quering Inverter in the dark
+  // Location based information to avoid quering Inverter in the dark
   if((flag.location==1)&&(flag.mysql==1)) {
     if( flag.debug == 1 ) printf( "Before todays Almanac\n" ); 
     if( ! todays_almanac( &conf, flag.debug ) ) {
@@ -1582,7 +1571,7 @@ int main(int argc, char **argv)
     if( flag.debug == 1 ) printf( "Before Check Schema\n" ); 
     if( check_schema( &conf, &flag,  SCHEMA ) != 1 ) {
       fprintf(stderr, "ERROR: Schema not correct\n");
-      exit(-1);
+      exit(1);
     }
   }
   if(flag.daterange==0 ) {
@@ -1593,12 +1582,12 @@ int main(int argc, char **argv)
   if( flag.verbose == 1 ) printf( "QUERY RANGE from %s to %s\n", conf.datefrom, conf.dateto ); 
 
   // Collect data from inverter
-  if((flag.location==0)||(flag.mysql==0)||no_dark==1||is_light( &conf, &flag )) {
+  if(flag.location==0||no_dark==1||is_light( &conf, &flag )) {
     if (flag.debug == 1) printf("Collecting data from inverter address %s\n",conf.BTAddress);
     //Connect to Inverter
     if ((s = ConnectSocket( &conf )) < 0 ) {
       fprintf(stderr, "ERROR: Cannot connect to socket\n");
-      exit( -1 );
+      exit(1);
     }
     // Read inverter codes
     if (flag.file == 1)
@@ -1626,9 +1615,11 @@ int main(int argc, char **argv)
   }
 
   // Store in database
-  if ((flag.post==1)&&(flag.mysql==1)&&(error==0)) {
+  if (flag.mysql==1) {
+    if( flag.debug == 1) printf( "Before store in database\n" ); 
     // Connect to database
     OpenMySqlDatabase( conf.MySqlHost, conf.MySqlUser, conf.MySqlPwd, conf.MySqlDatabase );
+    printf( "Storing archive data (%d records)\n",  archdatalen);
     for( i=1; i<archdatalen; i++ ) { //Start at 1 as the first record is a dummy 
       sprintf(SQLQUERY,"INSERT INTO DayData ( DateTime, Inverter, Serial, CurrentPower, EtotalToday ) VALUES ( FROM_UNIXTIME(%ld),\'%s\',%ld,%0.f, %.3f ) ON DUPLICATE KEY UPDATE DateTime=Datetime, Inverter=VALUES(Inverter), Serial=VALUES(Serial), CurrentPower=VALUES(CurrentPower), EtotalToday=VALUES(EtotalToday)",(archdatalist+i)->date, (archdatalist+i)->inverter, (archdatalist+i)->serial, (archdatalist+i)->current_value, (archdatalist+i)->accum_value );
       if (flag.debug == 1) printf("SQL Query: %s\n",SQLQUERY);
@@ -1637,9 +1628,10 @@ int main(int argc, char **argv)
     mysql_close(conn);
 
     // Update Mysql with live data
+    printf( "Storing live data (%d records)\n",  livedatalen); 
     live_mysql( conf, flag, livedatalist, livedatalen );
-    mysql_free_result( res );
-    mysql_close(conn);
+//    mysql_free_result( res );
+//    mysql_close(conn);
   }
 
   // Clean up data
@@ -1651,5 +1643,5 @@ int main(int argc, char **argv)
   livedatalen=0;
   close(s);
 
-return 0;
+  return 0;
 }
