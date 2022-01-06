@@ -1,0 +1,6 @@
+[Unit]
+Description=Reads SMA Sunny Boy PV data via Bluetooth into MySQL database
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/smatool -v -c /etc/smatool.conf -U REPLACE_WITH_USER -P REPLACE_WITH_PASSWORD
