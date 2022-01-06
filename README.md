@@ -6,11 +6,10 @@ Forked to implement own adaptations, and for Raspberry Pi (Buster)
 Needs:
 * xml2 (libxml2-dev)
 * bluetooth (libbluetooth-dev)
-* curl (libcurl3-dev or libcurl4-openssl-dev)
 * mysql client (was libmysqlclient-dev, apparently now default-libmysqlclient-dev)
 
 On RPi:
-sudo apt-get libxml2-dev install libbluetooth-dev libcurl4-openssl-dev default-libmysqlclient-dev
+sudo apt-get libxml2-dev install libbluetooth-dev default-libmysqlclient-dev
 
 To compile run make smatool
 

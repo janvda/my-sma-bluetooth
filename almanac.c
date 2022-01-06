@@ -64,7 +64,7 @@ char *  sunrise( ConfType *conf, int debug )
   if( debug == 1 ) printf( "corrected localOffset=%f\n", localOffset );
 
   lngHour = longitude / 15;
-  if( debug == 1 ) printf( "long=%f lngHour=%d\n", longitude, lngHour );
+  if( debug == 1 ) printf( "long=%f lngHour=%f\n", longitude, lngHour );
 
   t = loctime->tm_yday + ((6 - lngHour) / 24);
 
@@ -177,10 +177,10 @@ char * sunset( ConfType *conf, int debug )
   //calculate the Sun's local hour angle
   cosH = (cos((pi/180)*zenith) - (sinDec * sin((pi/180)*latitude))) / (cosDec * cos((pi/180)*latitude));
 
-  if (cosH >  1); 
+  if (cosH >  1)
     //the sun never rises on this location (on the specified date)
     printf( "Sun never rises here!\n" );
-  if (cosH < -1);
+  if (cosH < -1)
     //the sun never sets on this location (on the specified date)
     printf( "Sun never sets here!\n" );
 

@@ -19,8 +19,6 @@
 #ifndef H_SMASTRUCT
   #define H_SMASTRUCT
 
-#define DATELENGTH 18
-
 typedef struct{
   unsigned int key1;
   unsigned int key2;
@@ -64,9 +62,6 @@ typedef struct{
   char MySqlDatabase[20];     /*--mysqldb     -d 	*/
   char MySqlUser[80];         /*--mysqluser   -user 	*/
   char MySqlPwd[80];          /*--mysqlpwd    -pwd 	*/
-  char PVOutputURL[80];       /*--pvouturl    -url 	*/
-  char PVOutputKey[80];       /*--pvoutkey    -key 	*/
-  char PVOutputSid[20];       /*--pvoutsid    -sid 	*/
   char Setting[80];           /*inverter model data*/
   unsigned int MySUSyID[2];   /*SUSyID  of this app*/
   unsigned int MySerial[4];   /*Serial  of this app*/
@@ -74,8 +69,8 @@ typedef struct{
   unsigned int NetID;         /* Network ID of Inverter*/
   ReturnType *returnkeylist;  /* pointer to return key list */
   unsigned int num_return_keys;   /* number of items in list */
-  char datefrom[DATELENGTH];  /* is system using a daterange */
-  char dateto[DATELENGTH];     /* is system using a daterange */
+  char datefrom[40];  /* is system using a daterange */
+  char dateto[40];     /* is system using a daterange */
 } ConfType;
 
 typedef struct{

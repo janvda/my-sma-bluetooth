@@ -224,6 +224,7 @@ int check_schema( ConfType * conf, FlagType * flag, char *SCHEMA )
   int found=0;
   MYSQL_ROW row;
   char SQLQUERY[200];
+  char DB_SCHEMA[20];
 
   OpenMySqlDatabase( conf->MySqlHost, conf->MySqlUser, conf->MySqlPwd, conf->MySqlDatabase);
   //Get Start of day value
@@ -231,13 +232,14 @@ int check_schema( ConfType * conf, FlagType * flag, char *SCHEMA )
   if (flag->debug == 1) printf("%s\n",SQLQUERY);
   DoQuery(SQLQUERY);
   if ((row = mysql_fetch_row(res))) { //if there is a result, update the row
-    if( strcmp( row[0], SCHEMA ) == 0 )
+    strcpy(DB_SCHEMA, row[0]);
+    if( strcmp( DB_SCHEMA, SCHEMA ) == 0 )
       found=1;
   }
   mysql_free_result(res);
   mysql_close(conn);
   if( found != 1 ) {
-    printf( "Please Update database schema by using --UPDATE\n" );
+    printf( "Please Update database schema by using --UPDATE (DB scheme = %s, application scheme = %s)\n", DB_SCHEMA, SCHEMA );
   }
   return found;
 }
@@ -248,7 +250,7 @@ void live_mysql( ConfType conf, FlagType flag, LiveDataType *livedatalist, int l
 {
   struct tm *loctime;
   char SQLQUERY[2000];
-  char datetime[20];
+  char datetime[40];
   int day,month,year,hour,minute,second;
   int live_data=1;
   int i;

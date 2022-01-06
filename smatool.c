@@ -16,7 +16,7 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 
-#define _XOPEN_SOURCE /* glibc needs this */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -29,24 +29,19 @@
 #include <time.h>
 #include <assert.h>
 #include <sys/types.h>
-#include <curl/curl.h>
 #include <libxml2/libxml/parser.h>
 #include <libxml2/libxml/xpath.h>
 #include "almanac.h"
 #include "sb_commands.h"
 #include "sma_mysql.h"
 
-/*
- * u16 represents an unsigned 16-bit number.  Adjust the typedef for
- * your hardware.
- */
+// u16 represents an unsigned 16-bit number.  Adjust the typedef for your hardware.
 typedef u_int16_t u16;
 
 #define PPPINITFCS16 0xffff /* Initial FCS value    */
 #define PPPGOODFCS16 0xf0b8 /* Good final FCS value */
 #define ASSERT(x) assert(x)
 #define SCHEMA "4"  /* Current database schema */
-#define _XOPEN_SOURCE /* glibc2 needs this */
 
 
 char *accepted_strings[] = {
@@ -75,9 +70,9 @@ char *accepted_strings[] = {
 "$INVCODE",
 "$ARCHCODE",
 "$INVERTERDATA",
-"$CNT",        /*Counter of sent packets*/
-"$TIMEZONE",    /*Timezone seconds +1 from GMT*/
-"$TIMESET",    /*Unknown string involved in time setting*/
+"$CNT",         /* Counter of sent packets*/
+"$TIMEZONE",    /* Timezone seconds +1 from GMT*/
+"$TIMESET",     /*Unknown string involved in time setting*/
 "$DATA",        /*Data string */
 "$MYSUSYID",
 "$MYSERIAL",
@@ -195,82 +190,41 @@ void add_escapes(unsigned char *cp, int *len)
  */
 void fix_length_send( FlagType * flag, unsigned char *cp, int *len)
 {
-    int	    delta=0;
-
-    if( flag->debug == 1 ) 
-       printf( "sum=%x\n", cp[1]+cp[3] );
-    if(( cp[1] != (*len)+1 ))
-    {
-      delta = (*len)+1 - cp[1];
-      if( flag->debug == 1 ) {
-          printf( "  length change from %x to %x diff=%x \n", cp[1],(*len)+1,cp[1]+cp[3] );
-      }
-      cp[3] = (cp[1]+cp[3])-((*len)+1);
-      cp[1] =(*len)+1;
-
-      cp[3]=cp[0]^cp[1]^cp[2];
-      /*
-      switch( cp[1] ) {
-        case 0x3a: cp[3]=0x44; break;
-        case 0x3b: cp[3]=0x43; break;
-        case 0x3c: cp[3]=0x42; break;
-        case 0x3d: cp[3]=0x41; break;
-        case 0x3e: cp[3]=0x40; break;
-        case 0x3f: cp[3]=0x41; break;
-        case 0x40: cp[3]=0x3e; break;
-        case 0x41: cp[3]=0x3f; break;
-        case 0x42: cp[3]=0x3c; break;
-        case 0x52: cp[3]=0x2c; break;
-        case 0x53: cp[3]=0x2b; break;
-        case 0x54: cp[3]=0x2a; break;
-        case 0x55: cp[3]=0x29; break;
-        case 0x56: cp[3]=0x28; break;
-        case 0x57: cp[3]=0x27; break;
-        case 0x58: cp[3]=0x26; break;
-        case 0x59: cp[3]=0x25; break;
-        case 0x5a: cp[3]=0x24; break;
-        case 0x5b: cp[3]=0x23; break;
-        case 0x5c: cp[3]=0x22; break;
-        case 0x5d: cp[3]=0x23; break;
-        case 0x5e: cp[3]=0x20; break;
-        case 0x5f: cp[3]=0x21; break;
-        case 0x60: cp[3]=0x1e; break;
-        case 0x61: cp[3]=0x1f; break;
-        case 0x62: cp[3]=0x1e; break;
-        default: printf( "NO CONVERSION!" );break;
-      }
-      */
-      if( flag->debug == 1 ) 
-         printf( "new sum=%x\n", cp[1]+cp[3] );
-    }
+  if( flag->debug == 1 ) printf( "sum=%x\n", cp[1]+cp[3] );
+  if(( cp[1] != (*len)+1 )) {
+    if( flag->debug == 1 ) printf( "length change from %x to %x diff=%x \n", cp[1],(*len)+1,cp[1]+cp[3] );
+    cp[3] = (cp[1]+cp[3])-((*len)+1);
+    cp[1] =(*len)+1;
+    cp[3]=cp[0]^cp[1]^cp[2];
+    if( flag->debug == 1 ) printf( "new sum=%x\n", cp[1]+cp[3] );
+  }
 }
-            
+
 /*
  * Recalculate and update length to correct for escapes
  */
-void
-fix_length_received(FlagType * flag, unsigned char *received, int *len)
+void fix_length_received(FlagType * flag, unsigned char *received, int *len)
 {
-    int	    delta=0;
-    int	    sum;
+  int sum;
 
-    if( received[1] != (*len) )
-    {
-      sum = received[1]+received[3];
-      if (flag->debug == 1) printf( "sum=%x", sum );
-      delta = (*len) - received[1];
-      if (flag->debug == 1) printf( "length change from %x to %x\n", received[1], (*len) );
-      if(( received[3] != 0x13 )&&( received[3] != 0x14 )) { 
-        received[1] = (*len);
-        switch( received[1] ) {
-          case 0x52: received[3]=0x2c; break;
-          case 0x5a: received[3]=0x24; break;
-          case 0x66: received[3]=0x1a; break;
-          case 0x6a: received[3]=0x14; break;
-          default:  received[3]=sum-received[1]; break;
-        }
+  if( received[1] != (*len) )
+  {
+    sum = received[1]+received[3];
+    if (flag->debug == 1) {
+      printf( "sum=%x\n", sum );
+      printf( "length change from %x to %x\n", received[1], (*len) );
+    }
+    if(( received[3] != 0x13 )&&( received[3] != 0x14 )) { 
+      received[1] = (*len);
+      switch( received[1] ) {
+        case 0x52: received[3]=0x2c; break;
+        case 0x5a: received[3]=0x24; break;
+        case 0x66: received[3]=0x1a; break;
+        case 0x6a: received[3]=0x14; break;
+        default:  received[3]=sum-received[1]; break;
       }
     }
+  }
 }
 
 /*
@@ -278,26 +232,26 @@ fix_length_received(FlagType * flag, unsigned char *received, int *len)
  */
 void tryfcs16(FlagType * flag, unsigned char *cp, int len, unsigned char *fl, int * cc)
 {
-    u16 trialfcs;
-    unsigned
-    int i;	 
-    unsigned char stripped[1024] = { 0 };
+  u16 trialfcs;
+  unsigned
+  int i;
+  unsigned char stripped[1024] = { 0 };
 
-    memcpy( stripped, cp, len );
-    /* add on output */
-    if (flag->debug ==2){
- 	printf("String to calculate FCS\n");	 
-        	for (i=0;i<len;i++) printf("%02x ",cp[i]);
-	 	printf("\n\n");
-    }	
-    trialfcs = pppfcs16( PPPINITFCS16, stripped, len );
-    trialfcs ^= 0xffff;               /* complement */
-    fl[(*cc)] = (trialfcs & 0x00ff);    /* least significant byte first */
-    fl[(*cc)+1] = ((trialfcs >> 8) & 0x00ff);
-    (*cc)+=2;
-    if (flag->debug == 2 ){ 
-	printf("FCS = %x%x %x\n",(trialfcs & 0x00ff),((trialfcs >> 8) & 0x00ff), trialfcs); 
-    }
+  memcpy( stripped, cp, len );
+  /* add on output */
+  if (flag->debug == 2) {
+    printf("String to calculate FCS\n");	 
+    for (i=0;i<len;i++) printf("%02x ",cp[i]);
+    printf("\n\n");
+  }	
+  trialfcs = pppfcs16( PPPINITFCS16, stripped, len );
+  trialfcs ^= 0xffff;               /* complement */
+  fl[(*cc)] = (trialfcs & 0x00ff);  /* least significant byte first */
+  fl[(*cc)+1] = ((trialfcs >> 8) & 0x00ff);
+  (*cc)+=2;
+  if (flag->debug == 2 ) { 
+    printf("FCS = %x%x %x\n",(trialfcs & 0x00ff),((trialfcs >> 8) & 0x00ff), trialfcs); 
+  }
 }
 
 
@@ -457,521 +411,472 @@ check_send_error( FlagType * flag, int *s, int *rr, unsigned char *received, int
     return 0;
 }
 
-int
-empty_read_bluetooth(  ConfType * conf, FlagType * flag, ReadRecordType * readRecord, int *s, int *rr, unsigned char *received, int cc, unsigned char *last_sent, int *terminated )
+int empty_read_bluetooth(  ConfType * conf, FlagType * flag, ReadRecordType * readRecord, int *s, int *rr, unsigned char *received, int cc, unsigned char *last_sent, int *terminated )
 {
-    int bytes_read,i,j, last_decoded;
-    unsigned char buf[1024]; /*read buffer*/
-    unsigned char header[4]; /*read buffer*/
-    unsigned char checkbit;
-    struct timeval tv;
-    fd_set readfds;
+  int bytes_read,i,j, last_decoded;
+  unsigned char buf[1024]; /*read buffer*/
+  unsigned char header[4]; /*read buffer*/
+  struct timeval tv;
+  fd_set readfds;
 
-    tv.tv_sec = 1; // set timeout of reading
-    tv.tv_usec = 0;
-    memset(buf,0,1024);
+  tv.tv_sec = 1; // set timeout of reading
+  tv.tv_usec = 0;
+  memset(buf,0,1024);
 
-    FD_ZERO(&readfds);
-    FD_SET((*s), &readfds);
-				
-    if( select((*s)+1, &readfds, NULL, NULL, &tv) <  0) {
-      fprintf(stderr, "ERROR: select error has occurred\n");
-    }
+  FD_ZERO(&readfds);
+  FD_SET((*s), &readfds);
 
-				
-    (*terminated) = 0; // Tag to tell if string has 7e termination
-    // first read the header to get the record length
-    if (FD_ISSET((*s), &readfds)){	// did we receive anything within 5 seconds
-        bytes_read = recv((*s), header, sizeof(header), 0); //Get length of string
-	(*rr) = 0;
-        for( i=0; i<sizeof(header); i++ ) {
-            received[(*rr)] = header[i];
-	    if (flag->debug == 2) printf("%02x ", received[i]);
-            (*rr)++;
-        }
-    }
-    else
-    {
-       memset(received,0,1024);
-       (*rr)=0;
-       return -1;
-    }
-    if (FD_ISSET((*s), &readfds)){	// did we receive anything within 5 seconds
-        bytes_read = recv((*s), buf, header[1]-3, 0); //Read the length specified by header
-    }
-    else
-    {
-       memset(received,0,1024);
-       (*rr)=0;
-       return -1;
-    }
-    readRecord->Status[0]=0;
-    readRecord->Status[1]=0;
-    if ( bytes_read > 0){
-	if (flag->debug == 1){ 
-           /*
-           printf("\nReceiving\n");
-           printf( "    %08x: .. .. .. .. .. .. .. .. .. .. .. .. ", 0 );
-           j=12;
-           for( i=0; i<sizeof(header); i++ ) {
-              if( j%16== 0 )
-                 printf( "\n    %08x: ",j);
-              printf("%02x ",header[i]);
-              j++;
-           }
-	   for (i=0;i<bytes_read;i++) {
-              if( j%16== 0 )
-                 printf( "\n    %08x: ",j);
-              printf("%02x ",buf[i]);
-              j++;
-           }
-           printf(" rr=%d",(bytes_read+(*rr)));
-	   printf("\n\n");
-           */
-           printf( "\n-----------------------------------------------------------" );
-           printf( "\nREAD:");
-           //Start byte
-           printf("\n7e "); j++;
-           //Size and checkbit
-           printf("%02x ",header[1]);
-           printf("                      size:              %d", header[1] );
-           printf("\n   " );
-           printf("%02x ",header[2]);
-           printf("\n   " );
-           printf("%02x ",header[3]);
-           printf("                      checkbit:          %d", header[3] );
-           printf("\n   " );
-           //Source Address
-           for( i=0; i<bytes_read; i++ ) {
-              if( i > 5 ) break;
-              printf("%02x ",buf[i]);
-           }
-           printf("       source:            %02x:%02x:%02x:%02x:%02x:%02x", buf[5], buf[4], buf[3], buf[2], buf[1], buf[0] );
-           printf("\n   " );
-           //Destination Address
-           for( i=6; i<bytes_read; i++ ) {
-              if( i > 11 ) break;
-              printf("%02x ",buf[i]);
-           }
-           printf("       destination:       %02x:%02x:%02x:%02x:%02x:%02x", buf[11], buf[10], buf[9], buf[8], buf[7], buf[6] );
-           printf("\n   " );
-           //Destination Address
-           for( i=12; i<bytes_read; i++ ) {
-              if( i > 13 ) break;
-              printf("%02x ",buf[i]);
-           }
-           printf("                   control:           %02x%02x", buf[13], buf[12] );
-           readRecord->Control[0]=buf[12];
-           readRecord->Control[1]=buf[13];
-           
-           last_decoded=14;
-           if( memcmp( buf+14, "\x7e\xff\x03\x60\x65", 5 ) == 0 ){
-               printf("\n");
-               for( i=14; i<bytes_read; i++ ) {
-                   if( i > 18 ) break;
-                   printf("%02x ",buf[i]);
-               }
-               printf("             SMA Data2+ header: %02x:%02x:%02x:%02x:%02x", buf[18], buf[17], buf[16], buf[15], buf[14] );
-               printf("\n   " );
-               for( i=19; i<bytes_read; i++ ) {
-                   if( i > 19 ) break;
-                   printf("%02x ",buf[i]);
-               }
-               printf("                      data packet size:  %02d", buf[19] );
-               printf("\n   " );
-               for( i=20; i<bytes_read; i++ ) {
-                   if( i > 20 ) break;
-                   printf("%02x ",buf[i]);
-               }
-               printf("                      control:           %02x", buf[20] );
-               printf("\n   " );
-               for( i=21; i<bytes_read; i++ ) {
-                   if( i > 26 ) break;
-                   printf("%02x ",buf[i]);
-               }
-               printf("       source:            %02x %02x:%02x:%02x:%02x:%02x", buf[21], buf[26], buf[25], buf[24], buf[23], buf[22] );
-               printf("\n   " );
-               for( i=27; i<bytes_read; i++ ) {
-                   if( i > 28 ) break;
-                   printf("%02x ",buf[i]);
-               }
-               printf("                   read status:       %02x %02x", buf[28], buf[27] );
-               printf("\n   " );
-               for( i=29; i<bytes_read; i++ ) {
-                   if( i > 30 ) break;
-                   printf("%02x ",buf[i]);
-               }
-               readRecord->Status[0]=buf[28];
-               readRecord->Status[1]=buf[27];
-               printf("                   count up:          %02d %02x:%02x", buf[29]+buf[30]*256, buf[30], buf[29] );
-               printf("\n   " );
-               for( i=31; i<bytes_read; i++ ) {
-                   if( i > 32 ) break;
-                   printf("%02x ",buf[i]);
-               }
-               printf("                   count down:        %02d %02x:%02x", buf[31]+buf[32]*256, buf[32], buf[31] );
-               printf("\n   " );
-               last_decoded=33;
-           }
-           printf("\n   " );
-           j=0;
-	   for (i=last_decoded;i<bytes_read;i++) {
-              if( j%16== 0 )
-                 printf( "\n   %08x: ",j);
-              printf("%02x ",buf[i]);
-              j++;
-           }
-           printf(" rr=%d",(bytes_read+3));
-	   printf("\n\n");
-        }
-           
+  if( select((*s)+1, &readfds, NULL, NULL, &tv) <  0) {
+    fprintf(stderr, "ERROR: select error has occurred\n");
+  }
 
- 
-    }	
-    (*rr)=0;
+
+  (*terminated) = 0; // Tag to tell if string has 7e termination
+  // first read the header to get the record length
+  if (FD_ISSET((*s), &readfds)) { // did we receive anything within 5 seconds
+    bytes_read = recv((*s), header, sizeof(header), 0); //Get length of string
+    (*rr) = 0;
+    for( i=0; i<sizeof(header); i++ ) {
+      received[(*rr)] = header[i];
+      if (flag->debug == 1) printf("%02x ", received[i]);
+      (*rr)++;
+    }
+  } else {
     memset(received,0,1024);
-    return 0;
+    (*rr)=0;
+    return -1;
+  }
+  if (FD_ISSET((*s), &readfds)) { // did we receive anything within 5 seconds
+    bytes_read = recv((*s), buf, header[1]-3, 0); //Read the length specified by header
+  } else {
+    memset(received,0,1024);
+    (*rr)=0;
+    return -1;
+  }
+  readRecord->Status[0]=0;
+  readRecord->Status[1]=0;
+  if ( bytes_read > 0) {
+    if (flag->debug == 1){ 
+      printf( "\n-----------------------------------------------------------" );
+      printf( "\nREAD:");
+      //Start byte
+      printf("\n7e "); j++;
+      //Size and checkbit
+      printf("%02x ",header[1]);
+      printf("                      size:              %d", header[1] );
+      printf("\n   " );
+      printf("%02x ",header[2]);
+      printf("\n   " );
+      printf("%02x ",header[3]);
+      printf("                      checkbit:          %d", header[3] );
+      printf("\n   " );
+      //Source Address
+      for( i=0; i<bytes_read; i++ ) {
+        if( i > 5 ) break;
+        printf("%02x ",buf[i]);
+      }
+      printf("       source:            %02x:%02x:%02x:%02x:%02x:%02x", buf[5], buf[4], buf[3], buf[2], buf[1], buf[0] );
+      printf("\n   " );
+      //Destination Address
+      for( i=6; i<bytes_read; i++ ) {
+        if( i > 11 ) break;
+        printf("%02x ",buf[i]);
+      }
+      printf("       destination:       %02x:%02x:%02x:%02x:%02x:%02x", buf[11], buf[10], buf[9], buf[8], buf[7], buf[6] );
+      printf("\n   " );
+      //Destination Address
+      for( i=12; i<bytes_read; i++ ) {
+        if( i > 13 ) break;
+        printf("%02x ",buf[i]);
+      }
+      printf("                   control:           %02x%02x", buf[13], buf[12] );
+      readRecord->Control[0]=buf[12];
+      readRecord->Control[1]=buf[13];
+           
+      last_decoded=14;
+      if( memcmp( buf+14, "\x7e\xff\x03\x60\x65", 5 ) == 0 ){
+        printf("\n");
+        for( i=14; i<bytes_read; i++ ) {
+          if( i > 18 ) break;
+          printf("%02x ",buf[i]);
+        }
+        printf("             SMA Data2+ header: %02x:%02x:%02x:%02x:%02x", buf[18], buf[17], buf[16], buf[15], buf[14] );
+        printf("\n   " );
+        for( i=19; i<bytes_read; i++ ) {
+          if( i > 19 ) break;
+          printf("%02x ",buf[i]);
+        }
+        printf("                      data packet size:  %02d", buf[19] );
+        printf("\n   " );
+        for( i=20; i<bytes_read; i++ ) {
+          if( i > 20 ) break;
+          printf("%02x ",buf[i]);
+        }
+        printf("                      control:           %02x", buf[20] );
+        printf("\n   " );
+        for( i=21; i<bytes_read; i++ ) {
+          if( i > 26 ) break;
+          printf("%02x ",buf[i]);
+        }
+        printf("       source:            %02x %02x:%02x:%02x:%02x:%02x", buf[21], buf[26], buf[25], buf[24], buf[23], buf[22] );
+        printf("\n   " );
+        for( i=27; i<bytes_read; i++ ) {
+          if( i > 28 ) break;
+          printf("%02x ",buf[i]);
+        }
+        printf("                   read status:       %02x %02x", buf[28], buf[27] );
+        printf("\n   " );
+        for( i=29; i<bytes_read; i++ ) {
+          if( i > 30 ) break;
+          printf("%02x ",buf[i]);
+        }
+        readRecord->Status[0]=buf[28];
+        readRecord->Status[1]=buf[27];
+        printf("                   count up:          %02d %02x:%02x", buf[29]+buf[30]*256, buf[30], buf[29] );
+        printf("\n   " );
+        for( i=31; i<bytes_read; i++ ) {
+          if( i > 32 ) break;
+          printf("%02x ",buf[i]);
+        }
+        printf("                   count down:        %02d %02x:%02x", buf[31]+buf[32]*256, buf[32], buf[31] );
+        printf("\n   " );
+        last_decoded=33;
+      }
+      printf("\n   " );
+      j=0;
+      for (i=last_decoded;i<bytes_read;i++) {
+        if( j%16== 0 ) printf( "\n   %08x: ",j);
+        printf("%02x ",buf[i]);
+        j++;
+      }
+      printf(" rr=%d",(bytes_read+3));
+      printf("\n\n");
+    } // if debug
+  } // if bytes read
+  (*rr)=0;
+  memset(received,0,1024);
+  return 0;
 }
 
 int read_bluetooth( ConfType * conf, FlagType * flag, ReadRecordType * readRecord, int *s, int *rr, unsigned char *received, int cc, unsigned char *last_sent, int *terminated )
 {
-    int bytes_read,i,j, last_decoded;
-    unsigned char buf[1024]; /*read buffer*/
-    unsigned char header[4]; /*read buffer*/
-    unsigned char checkbit;
-    struct timeval tv;
-    fd_set readfds;
+  int bytes_read,i,j, last_decoded;
+  unsigned char buf[1024]; /*read buffer*/
+  unsigned char header[4]; /*read buffer*/
+  unsigned char checkbit;
+  struct timeval tv;
+  fd_set readfds;
 
-    tv.tv_sec = conf->bt_timeout; // set timeout of reading
-    tv.tv_usec = 0;
-    memset(buf,0,1024);
+  tv.tv_sec = conf->bt_timeout; // set timeout of reading
+  tv.tv_usec = 0;
+  memset(buf,0,1024);
 
-    FD_ZERO(&readfds);
-    FD_SET((*s), &readfds);
-				
-    if( select((*s)+1, &readfds, NULL, NULL, &tv) <  0) {
-      fprintf(stderr, "ERROR: select error has occurred\n");
+  FD_ZERO(&readfds);
+  FD_SET((*s), &readfds);
+      
+  if( select((*s)+1, &readfds, NULL, NULL, &tv) <  0) {
+    fprintf(stderr, "ERROR: select error has occurred\n");
+  }
+      
+  if(flag->debug == 1) printf("Reading bluetooth packet (socket=%d)\n", (*s));
+  (*terminated) = 0; // Tag to tell if string has 7e termination
+  // first read the header to get the record length
+  if (FD_ISSET((*s), &readfds)) { // did we receive anything within 5 seconds
+    bytes_read = recv((*s), header, sizeof(header), 0); //Get length of string
+    (*rr) = 0;
+    for( i=0; i<sizeof(header); i++ ) {
+      received[(*rr)] = header[i];
+      if (flag->debug == 2) printf("%02x ", received[i]);
+      (*rr)++;
     }
-				
-    if( flag->debug==1) printf("Reading bluetooth packet\n");
-    if( flag->debug==1) printf("socket=%d\n", (*s));
-    (*terminated) = 0; // Tag to tell if string has 7e termination
-    // first read the header to get the record length
-    if (FD_ISSET((*s), &readfds)){	// did we receive anything within 5 seconds
-        bytes_read = recv((*s), header, sizeof(header), 0); //Get length of string
-	(*rr) = 0;
-        for( i=0; i<sizeof(header); i++ ) {
-            received[(*rr)] = header[i];
-	    if (flag->debug == 2) printf("%02x ", received[i]);
-            (*rr)++;
+  } else {
+    if( flag->verbose==1) printf("Timeout reading bluetooth socket\n");
+    (*rr) = 0;
+    memset(received,0,1024);
+    return -1;
+  }
+  if (FD_ISSET((*s), &readfds)){ // did we receive anything within 5 seconds
+    bytes_read = recv((*s), buf, header[1]-3, 0); //Read the length specified by header
+  } else {
+    if( flag->verbose==1) printf("Timeout reading bluetooth socket\n");
+    (*rr) = 0;
+    memset(received,0,1024);
+    return -1;
+  }
+  readRecord->Status[0]=0;
+  readRecord->Status[1]=0;
+  if ( bytes_read > 0) {
+    if (flag->debug == 1) { 
+      printf( "\n-----------------------------------------------------------" );
+      printf( "\nREAD:");
+      //Start byte
+      printf("\n7e "); j++;
+      //Size and checkbit
+      printf("%02x ",header[1]);
+      printf("                      size:              %d", header[1] );
+      printf("\n   " );
+      printf("%02x ",header[2]);
+      printf("\n   " );
+      printf("%02x ",header[3]);
+      printf("                      checkbit:          %d", header[3] );
+      printf("\n   " );
+      //Source Address
+      for( i=0; i<bytes_read; i++ ) {
+        if( i > 5 ) break;
+        printf("%02x ",buf[i]);
+      }
+      printf("       source:            %02x:%02x:%02x:%02x:%02x:%02x", buf[5], buf[4], buf[3], buf[2], buf[1], buf[0] );
+      printf("\n   " );
+      //Destination Address
+      for( i=6; i<bytes_read; i++ ) {
+        if( i > 11 ) break;
+        printf("%02x ",buf[i]);
+      }
+      printf("       destination:       %02x:%02x:%02x:%02x:%02x:%02x", buf[11], buf[10], buf[9], buf[8], buf[7], buf[6] );
+      printf("\n   " );
+      //Destination Address
+      for( i=12; i<bytes_read; i++ ) {
+        if( i > 13 ) break;
+        printf("%02x ",buf[i]);
+      }
+      printf("                   control:           %02x%02x", buf[13], buf[12] );
+      readRecord->Control[0]=buf[12];
+      readRecord->Control[1]=buf[13];
+         
+      last_decoded=14;
+      if( memcmp( buf+14, "\x7e\xff\x03\x60\x65", 5 ) == 0 ) {
+        printf("\n");
+        for( i=14; i<bytes_read; i++ ) {
+          if( i > 18 ) break;
+          printf("%02x ",buf[i]);
         }
+        printf("             SMA Data2+ header: %02x:%02x:%02x:%02x:%02x", buf[18], buf[17], buf[16], buf[15], buf[14] );
+        printf("\n   " );
+        for( i=19; i<bytes_read; i++ ) {
+          if( i > 19 ) break;
+          printf("%02x ",buf[i]);
+        }
+        printf("                      data packet size:  %02d", buf[19] );
+        printf("\n   " );
+        for( i=20; i<bytes_read; i++ ) {
+          if( i > 20 ) break;
+          printf("%02x ",buf[i]);
+        }
+        printf("                      control:           %02x", buf[20] );
+        printf("\n   " );
+        for( i=21; i<bytes_read; i++ ) {
+          if( i > 26 ) break;
+          printf("%02x ",buf[i]);
+        }
+        printf("       source:            %02x %02x:%02x:%02x:%02x:%02x", buf[21], buf[26], buf[25], buf[24], buf[23], buf[22] );
+        printf("\n   " );
+        for( i=27; i<bytes_read; i++ ) {
+          if( i > 28 ) break;
+          printf("%02x ",buf[i]);
+        }
+        printf("                   read status:       %02x %02x", buf[28], buf[27] );
+        printf("\n   " );
+        for( i=29; i<bytes_read; i++ ) {
+          if( i > 30 ) break;
+          printf("%02x ",buf[i]);
+        }
+        readRecord->Status[0]=buf[28];
+        readRecord->Status[1]=buf[27];
+        printf("                   count up:          %02d %02x:%02x", buf[29]+buf[30]*256, buf[30], buf[29] );
+        printf("\n   " );
+        for( i=31; i<bytes_read; i++ ) {
+          if( i > 32 ) break;
+          printf("%02x ",buf[i]);
+        }
+        printf("                   count down:        %02d %02x:%02x", buf[31]+buf[32]*256, buf[32], buf[31] );
+        printf("\n   " );
+        last_decoded=33;
+      } // if memcmp
+      printf("\n   " );
+      j=0;
+      for (i=last_decoded;i<bytes_read;i++) {
+        if( j%16== 0 ) printf( "\n   %08x: ",j);
+        printf("%02x ",buf[i]);
+        j++;
+      }
+      printf(" rr=%d",(bytes_read+3));
+      printf("\n");
+    } // if debug
+    if ((cc==bytes_read)&&(memcmp(received,last_sent,cc) == 0)){
+      fprintf(stderr, "ERROR: received what we sent!\n");
+      //Need to do something
+      // EZ added:
+      return -1;
     }
+    // Check check bit
+    checkbit=header[0]^header[1]^header[2];
+    if( checkbit != header[3] ) {
+      fprintf(stderr, "ERROR: Checkbit Error! %02x!=%02x\n",  header[0]^header[1]^header[2], header[3]);
+      (*rr) = 0;
+      memset(received,0,1024);
+      return -1;
+    }
+    if( buf[ bytes_read-1 ] == 0x7e )
+      (*terminated) = 1;
     else
-    {
-       if( flag->verbose==1) printf("Timeout reading bluetooth socket\n");
-       (*rr) = 0;
-       memset(received,0,1024);
-       return -1;
+      (*terminated) = 0;
+    for (i=0;i<bytes_read;i++) { //start copy the rec buffer in to received
+      if (buf[i] == 0x7d) { //did we receive the escape char
+        switch (buf[i+1]) {   // act depending on the char after the escape char
+          case 0x5e :
+            received[(*rr)] = 0x7e;
+            break;
+          case 0x5d :
+            received[(*rr)] = 0x7d;
+            break;
+          default :
+            received[(*rr)] = buf[i+1] ^ 0x20;
+            break;
+        }
+        i++;
+      } else { 
+        received[(*rr)] = buf[i];
+      }
+      if (flag->debug == 2) printf("%02x ", received[(*rr)]);
+      (*rr)++;
     }
-    if (FD_ISSET((*s), &readfds)){	// did we receive anything within 5 seconds
-        bytes_read = recv((*s), buf, header[1]-3, 0); //Read the length specified by header
+    fix_length_received( flag, received, rr );
+    if (flag->debug == 2) {
+      printf("\n");
+      for( i=0;i<(*rr); i++ ) printf("%02x ", received[(i)]);
     }
-    else
-    {
-       if( flag->verbose==1) printf("Timeout reading bluetooth socket\n");
-       (*rr) = 0;
-       memset(received,0,1024);
-       return -1;
-    }
-    readRecord->Status[0]=0;
-    readRecord->Status[1]=0;
-    if ( bytes_read > 0){
-	if (flag->debug == 1){ 
-           printf( "\n-----------------------------------------------------------" );
-           printf( "\nREAD:");
-           //Start byte
-           printf("\n7e "); j++;
-           //Size and checkbit
-           printf("%02x ",header[1]);
-           printf("                      size:              %d", header[1] );
-           printf("\n   " );
-           printf("%02x ",header[2]);
-           printf("\n   " );
-           printf("%02x ",header[3]);
-           printf("                      checkbit:          %d", header[3] );
-           printf("\n   " );
-           //Source Address
-           for( i=0; i<bytes_read; i++ ) {
-              if( i > 5 ) break;
-              printf("%02x ",buf[i]);
-           }
-           printf("       source:            %02x:%02x:%02x:%02x:%02x:%02x", buf[5], buf[4], buf[3], buf[2], buf[1], buf[0] );
-           printf("\n   " );
-           //Destination Address
-           for( i=6; i<bytes_read; i++ ) {
-              if( i > 11 ) break;
-              printf("%02x ",buf[i]);
-           }
-           printf("       destination:       %02x:%02x:%02x:%02x:%02x:%02x", buf[11], buf[10], buf[9], buf[8], buf[7], buf[6] );
-           printf("\n   " );
-           //Destination Address
-           for( i=12; i<bytes_read; i++ ) {
-              if( i > 13 ) break;
-              printf("%02x ",buf[i]);
-           }
-           printf("                   control:           %02x%02x", buf[13], buf[12] );
-           readRecord->Control[0]=buf[12];
-           readRecord->Control[1]=buf[13];
-           
-           last_decoded=14;
-           if( memcmp( buf+14, "\x7e\xff\x03\x60\x65", 5 ) == 0 ){
-               printf("\n");
-               for( i=14; i<bytes_read; i++ ) {
-                   if( i > 18 ) break;
-                   printf("%02x ",buf[i]);
-               }
-               printf("             SMA Data2+ header: %02x:%02x:%02x:%02x:%02x", buf[18], buf[17], buf[16], buf[15], buf[14] );
-               printf("\n   " );
-               for( i=19; i<bytes_read; i++ ) {
-                   if( i > 19 ) break;
-                   printf("%02x ",buf[i]);
-               }
-               printf("                      data packet size:  %02d", buf[19] );
-               printf("\n   " );
-               for( i=20; i<bytes_read; i++ ) {
-                   if( i > 20 ) break;
-                   printf("%02x ",buf[i]);
-               }
-               printf("                      control:           %02x", buf[20] );
-               printf("\n   " );
-               for( i=21; i<bytes_read; i++ ) {
-                   if( i > 26 ) break;
-                   printf("%02x ",buf[i]);
-               }
-               printf("       source:            %02x %02x:%02x:%02x:%02x:%02x", buf[21], buf[26], buf[25], buf[24], buf[23], buf[22] );
-               printf("\n   " );
-               for( i=27; i<bytes_read; i++ ) {
-                   if( i > 28 ) break;
-                   printf("%02x ",buf[i]);
-               }
-               printf("                   read status:       %02x %02x", buf[28], buf[27] );
-               printf("\n   " );
-               for( i=29; i<bytes_read; i++ ) {
-                   if( i > 30 ) break;
-                   printf("%02x ",buf[i]);
-               }
-               readRecord->Status[0]=buf[28];
-               readRecord->Status[1]=buf[27];
-               printf("                   count up:          %02d %02x:%02x", buf[29]+buf[30]*256, buf[30], buf[29] );
-               printf("\n   " );
-               for( i=31; i<bytes_read; i++ ) {
-                   if( i > 32 ) break;
-                   printf("%02x ",buf[i]);
-               }
-               printf("                   count down:        %02d %02x:%02x", buf[31]+buf[32]*256, buf[32], buf[31] );
-               printf("\n   " );
-               last_decoded=33;
-           }
-           printf("\n   " );
-           j=0;
-           for (i=last_decoded;i<bytes_read;i++) {
-              if( j%16== 0 )
-                 printf( "\n   %08x: ",j);
-              printf("%02x ",buf[i]);
-              j++;
-           }
-           printf(" rr=%d",(bytes_read+3));
-	   printf("\n\n");
-        }
-           
-        if ((cc==bytes_read)&&(memcmp(received,last_sent,cc) == 0)){
-          fprintf(stderr, "ERROR: received what we sent!\n");
-           //Need to do something
-        }
-        // Check check bit
-        checkbit=header[0]^header[1]^header[2];
-        if( checkbit != header[3] )
-        {
-            fprintf(stderr, "ERROR: Checkbit Error! %02x!=%02x\n",  header[0]^header[1]^header[2], header[3]);
-            (*rr) = 0;
-            memset(received,0,1024);
-            return -1;
-        }
-        if( buf[ bytes_read-1 ] == 0x7e )
-           (*terminated) = 1;
-        else
-           (*terminated) = 0;
-        for (i=0;i<bytes_read;i++){ //start copy the rec buffer in to received
-            if (buf[i] == 0x7d){ //did we receive the escape char
-	        switch (buf[i+1]){   // act depending on the char after the escape char
-					
-		    case 0x5e :
-	                received[(*rr)] = 0x7e;
-		        break;
-							   
-		    case 0x5d :
-		        received[(*rr)] = 0x7d;
-		        break;
-							
-		    default :
-		        received[(*rr)] = buf[i+1] ^ 0x20;
-		        break;
-	        }
-		    i++;
-	    }
-	    else { 
-               received[(*rr)] = buf[i];
-            }
-	    if (flag->debug == 2) printf("%02x ", received[(*rr)]);
-	    (*rr)++;
-	}
-        fix_length_received( flag, received, rr );
-	if (flag->debug == 2) {
-	    printf("\n");
-            for( i=0;i<(*rr); i++ ) printf("%02x ", received[(i)]);
-        }
-	if (flag->debug == 1) printf("\n\n");
-    }	
-    return 0;
+    if (flag->debug == 1) printf("\n\n");
+  } // if bytes read
+  return 0;
 }
 
-int select_str(char *s)
+int select_str(FlagType * flag, char *s)
 {
-    int i;
-    for (i=0; i < sizeof(accepted_strings)/sizeof(*accepted_strings);i++)
-    {
-       //printf( "\ni=%d accepted=%s string=%s", i, accepted_strings[i], s );
-       if (!strcmp(s, accepted_strings[i])) return i;
-    }
-    return -1;
+  int i;
+  for (i=0; i < sizeof(accepted_strings)/sizeof(*accepted_strings);i++) {
+     if (flag->debug == 2) printf( "\ni=%d accepted=%s string=%s", i, accepted_strings[i], s );
+     if (!strcmp(s, accepted_strings[i])) {
+     if (flag->debug == 1) printf( "Accepted %s (returning %d)\n", accepted_strings[i], i);
+       return i;
+     }
+  }
+  return -1;
 }
 
 unsigned char *  get_timezone_in_seconds( FlagType * flag, unsigned char *tzhex )
 {
-   time_t curtime;
-   struct tm *loctime;
-   struct tm *utctime;
-   int day,month,year,hour,minute,isdst;
-   char *returntime;
+  time_t curtime;
+  struct tm *loctime;
+  struct tm *utctime;
+  int day,month,year,hour,minute,isdst;
+  float localOffset;
+  int	 tzsecs;
 
-   float localOffset;
-   int	 tzsecs;
+  curtime = time(NULL);  //get time in seconds since epoch (1/1/1970)	
+  loctime = localtime(&curtime);
+  day = loctime->tm_mday;
+  month = loctime->tm_mon +1;
+  year = loctime->tm_year + 1900;
+  hour = loctime->tm_hour;
+  minute = loctime->tm_min; 
+  isdst  = loctime->tm_isdst;
+  utctime = gmtime(&curtime);
 
-   returntime = (char *)malloc(6*sizeof(char));
-   curtime = time(NULL);  //get time in seconds since epoch (1/1/1970)	
-   loctime = localtime(&curtime);
-   day = loctime->tm_mday;
-   month = loctime->tm_mon +1;
-   year = loctime->tm_year + 1900;
-   hour = loctime->tm_hour;
-   minute = loctime->tm_min; 
-   isdst  = loctime->tm_isdst;
-   utctime = gmtime(&curtime);
-   
-   if( flag->debug == 1 ) printf( "utc=%04d-%02d-%02d %02d:%02d local=%04d-%02d-%02d %02d:%02d diff %d hours\n", utctime->tm_year+1900, utctime->tm_mon+1,utctime->tm_mday,utctime->tm_hour,utctime->tm_min, year, month, day, hour, minute, hour-utctime->tm_hour );
-   localOffset=(hour-utctime->tm_hour)+(float)(minute-utctime->tm_min)/60;
-   if( flag->debug == 1 ) printf( "localOffset=%f\n", localOffset );
-   if(( year > utctime->tm_year+1900 )||( month > utctime->tm_mon+1 )||( day > utctime->tm_mday ))
-      localOffset+=24;
-   if(( year < utctime->tm_year+1900 )||( month < utctime->tm_mon+1 )||( day < utctime->tm_mday ))
-      localOffset-=24;
-   if( flag->debug == 1 ) printf( "localOffset=%f isdst=%d\n", localOffset, isdst );
-   if( isdst > 0 ) 
-       localOffset=localOffset-1;
-   tzsecs = (localOffset) * 3600 + 1;
-   if( tzsecs < 0 )
-       tzsecs=65536+tzsecs;
-   if( flag->debug == 1 ) printf( "tzsecs=%x %d\n", tzsecs, tzsecs );
-   tzhex[1] = tzsecs/256;
-   tzhex[0] = tzsecs -(tzsecs/256)*256;
-   if( flag->debug == 1 ) printf( "tzsecs=%02x %02x\n", tzhex[1], tzhex[0] );
+  if( flag->debug == 1 ) printf( "utc=%04d-%02d-%02d %02d:%02d local=%04d-%02d-%02d %02d:%02d diff %d hours\n", utctime->tm_year+1900, utctime->tm_mon+1,utctime->tm_mday,utctime->tm_hour,utctime->tm_min, year, month, day, hour, minute, hour-utctime->tm_hour );
+  localOffset=(hour-utctime->tm_hour)+(float)(minute-utctime->tm_min)/60;
+  if( flag->debug == 1 ) printf( "localOffset=%f\n", localOffset );
+  if(( year > utctime->tm_year+1900 )||( month > utctime->tm_mon+1 )||( day > utctime->tm_mday ))
+    localOffset+=24;
+  if(( year < utctime->tm_year+1900 )||( month < utctime->tm_mon+1 )||( day < utctime->tm_mday ))
+    localOffset-=24;
+  if( flag->debug == 1 ) printf( "localOffset=%f isdst=%d\n", localOffset, isdst );
+  if( isdst > 0 ) 
+    localOffset=localOffset-1;
+  tzsecs = (localOffset) * 3600 + 1;
+  if( tzsecs < 0 )
+    tzsecs=65536+tzsecs;
+  if( flag->debug == 1 ) printf( "tzsecs=%d (dec) %x (hex)\n", tzsecs, tzsecs );
+  tzhex[1] = tzsecs/256;
+  tzhex[0] = tzsecs -(tzsecs/256)*256;
+  if( flag->debug == 1 ) printf( "tzsecs=%02x %02x (2 bytes hex)\n", tzhex[1], tzhex[0] );
 
-   return tzhex;
+  return tzhex;
 }
 
 int auto_set_dates( ConfType * conf, FlagType * flag )
 /*  If there are no dates set - get last updated date and go from there to NOW */
 {
-    MYSQL_ROW 	row;
-    char 	SQLQUERY[200];
-    time_t  	curtime;
-    int 	day,month,year,hour,minute,second;
-    struct tm 	*loctime;
+  MYSQL_ROW row;
+  char SQLQUERY[200];
+  time_t curtime;
+  int day,month,year,hour,minute;
+  struct tm *loctime;
 
-    if( flag->mysql == 1 )
-    {
-        OpenMySqlDatabase( conf->MySqlHost, conf->MySqlUser, conf->MySqlPwd, conf->MySqlDatabase);
-        //Get last updated value
-        sprintf(SQLQUERY,"SELECT DATE_FORMAT( DateTime, \"%%Y-%%m-%%d %%H:%%i:%%S\" ) FROM DayData WHERE 1 ORDER BY DateTime DESC LIMIT 1" );
-        if (flag->debug == 1) printf("%s\n",SQLQUERY);
-        DoQuery(SQLQUERY);
-        if ((row = mysql_fetch_row(res)))  //if there is a result, update the row
-        {
-           strcpy( conf->datefrom, row[0] );
-        }
-        mysql_free_result( res );
-        mysql_close(conn);
-    }
-    if( strlen( conf->datefrom ) == 0 )
-        strcpy( conf->datefrom, "2000-01-01 00:00:00" );
-    
-    curtime = time(NULL);  //get time in seconds since epoch (1/1/1970)	
-    loctime = localtime(&curtime);
-    day = loctime->tm_mday;
-    month = loctime->tm_mon +1;
-    year = loctime->tm_year + 1900;
-    hour = loctime->tm_hour;
-    minute = loctime->tm_min; 
-    second = loctime->tm_sec; 
-    sprintf( conf->dateto, "%04d-%02d-%02d %02d:%02d:00", year, month, day, hour, minute );
-    flag->daterange=1;
-    if( flag->verbose == 1 ) printf( "Auto set dates from %s to %s\n", conf->datefrom, conf->dateto );
-    return 1;
+  if( flag->mysql == 1 ) {
+    OpenMySqlDatabase( conf->MySqlHost, conf->MySqlUser, conf->MySqlPwd, conf->MySqlDatabase);
+    //Get last updated value
+    sprintf(SQLQUERY,"SELECT DATE_FORMAT( DateTime, \"%%Y-%%m-%%d %%H:%%i:%%S\" ) FROM DayData WHERE 1 ORDER BY DateTime DESC LIMIT 1" );
+    if (flag->debug == 1) printf("%s\n",SQLQUERY);
+    DoQuery(SQLQUERY);
+    if ((row = mysql_fetch_row(res)))  //if there is a result, update the row
+      strcpy( conf->datefrom, row[0] );
+    mysql_free_result( res );
+    mysql_close(conn);
+  }
+  if( strlen( conf->datefrom ) == 0 ) {
+    strcpy( conf->datefrom, "2000-01-01 00:00:00" );
+    if( flag->debug == 1 ) printf( "datefrom %s\n", conf->datefrom);
+  }
+  curtime = time(NULL);  //get time in seconds since epoch (1/1/1970)	
+  loctime = localtime(&curtime);
+  day = loctime->tm_mday;
+  month = loctime->tm_mon +1;
+  year = loctime->tm_year + 1900;
+  hour = loctime->tm_hour;
+  minute = loctime->tm_min; 
+  sprintf( conf->dateto, "%04d-%02d-%02d %02d:%02d:00", year, month, day, hour, minute );
+  flag->daterange=1;
+  if( flag->verbose == 1 ) printf( "Auto set dates: from %s to %s\n", conf->datefrom, conf->dateto );
+  return 1;
 }
 
 int is_light( ConfType * conf, FlagType * flag )
 /*  Check if all data done and past sunset or before sunrise */
 {
-    int	        light=1;
-    MYSQL_ROW 	row;
-    char 	SQLQUERY[200];
+  int light=1;
+  MYSQL_ROW row;
+  char SQLQUERY[200];
 
-    OpenMySqlDatabase( conf->MySqlHost, conf->MySqlUser, conf->MySqlPwd, conf->MySqlDatabase);
-    //Get Start of day value
-    sprintf(SQLQUERY,"SELECT if(sunrise < NOW(),1,0) FROM Almanac WHERE date= DATE_FORMAT( NOW(), \"%%Y-%%m-%%d\" ) " );
+  OpenMySqlDatabase( conf->MySqlHost, conf->MySqlUser, conf->MySqlPwd, conf->MySqlDatabase);
+  //Get Start of day value
+  sprintf(SQLQUERY,"SELECT if(sunrise < NOW(),1,0) FROM Almanac WHERE date= DATE_FORMAT( NOW(), \"%%Y-%%m-%%d\" ) " );
+  if (flag->debug == 1) printf("%s\n",SQLQUERY);
+  DoQuery(SQLQUERY);
+  if ((row = mysql_fetch_row(res)))  //if there is a result, update the row
+    if( atoi( (char *)row[0] ) == 0 ) light=0;
+  if( light ) {
+    sprintf(SQLQUERY,"SELECT if( dd.datetime > al.sunset,1,0) FROM DayData as dd left join Almanac as al on al.date=DATE(dd.datetime) and al.date=DATE(NOW()) WHERE 1 ORDER BY dd.datetime DESC LIMIT 1" );
     if (flag->debug == 1) printf("%s\n",SQLQUERY);
     DoQuery(SQLQUERY);
     if ((row = mysql_fetch_row(res)))  //if there is a result, update the row
-    {
-       if( atoi( (char *)row[0] ) == 0 ) light=0;
-    }
-    if( light ) {
-       sprintf(SQLQUERY,"SELECT if( dd.datetime > al.sunset,1,0) FROM DayData as dd left join Almanac as al on al.date=DATE(dd.datetime) and al.date=DATE(NOW()) WHERE 1 ORDER BY dd.datetime DESC LIMIT 1" );
-       if (flag->debug == 1) printf("%s\n",SQLQUERY);
-       DoQuery(SQLQUERY);
-       if ((row = mysql_fetch_row(res)))  //if there is a result, update the row
-       {
-          if( atoi( (char *)row[0] ) == 1 ) light=0;
-       }
-    }
-    if (flag->debug == 1) printf("Before close\n",SQLQUERY);
-    
-    mysql_close(conn);
-    return light;
+      if( atoi( (char *)row[0] ) == 1 ) light=0;
+  }
+  mysql_close(conn);
+  return light;
 }
 
 //Set a value depending on inverter
 void  SetInverterType( ConfType * conf, UnitType ** unit )  
 {
-    srand(time(NULL));
-    unit[0]->SUSyID[0] = 0xFF;
-    unit[0]->SUSyID[1] = 0xFF;
-    conf->MySUSyID[0] = rand()%254;
-    conf->MySUSyID[1] = rand()%254;
-    conf->MySerial[0] = rand()%254;
-    conf->MySerial[1] = rand()%254;
-    conf->MySerial[2] = rand()%254;
-    conf->MySerial[3] = rand()%254;
+  srand(time(NULL));
+  unit[0]->SUSyID[0] = 0xFF;
+  unit[0]->SUSyID[1] = 0xFF;
+  conf->MySUSyID[0] = rand()%254;
+  conf->MySUSyID[1] = rand()%254;
+  conf->MySerial[0] = rand()%254;
+  conf->MySerial[1] = rand()%254;
+  conf->MySerial[2] = rand()%254;
+  conf->MySerial[3] = rand()%254;
 }
 
 //Convert a received string to a value
@@ -1041,78 +946,63 @@ char * ConvertStreamtoString( unsigned char * stream, int length )
 }
 
 //read return value data from init file
-ReturnType * 
-InitReturnKeys( ConfType * conf )
+ReturnType * InitReturnKeys( ConfType * conf )
 {
-   FILE		*fp;
-   char		line[400];
-   ReturnType   tmp;
-   ReturnType   *returnkeylist;
-   int		num_return_keys=0;
-   int		i, j, reading, data_follows;
+  FILE *fp;
+  char line[400];
+  ReturnType tmp;
+  ReturnType *returnkeylist;
+  int num_return_keys=0;
+  int data_follows=0;
 
-   data_follows = 0;
-
-   fp=fopen(conf->File,"r");
-   if( fp == NULL ) {
-       fprintf(stderr, "ERROR: Couldn't open file %s", conf->File );
-       fprintf(stderr, "Error = %s\n", strerror( errno ));
-       exit(1);
-   }
-   else {
-
-      while (!feof(fp)){	
-         if (fgets(line,400,fp) != NULL){				//read line from smatool.conf
-            if( line[0] != '#' ) 
-            {
-                if( strncmp( line, ":unit conversions", 17 ) == 0 )
-                    data_follows = 1;
-                if( strncmp( line, ":end unit conversions", 21 ) == 0 )
-                    data_follows = 0;
-                if( data_follows == 1 ) {
-                    tmp.key1=0x0;
-                    tmp.key2=0x0;
-                    strcpy( tmp.description, "" ); //Null out value
-                    strcpy( tmp.units, "" ); //Null out value
-                    tmp.divisor=0;
-                    tmp.decimal=0;
-                    tmp.datalength=0;
-                    tmp.recordgap=0;
-                    tmp.persistent=1;
-                    reading=0;
-                    if( sscanf( line, "%x %x \"%[^\"]\" \"%[^\"]\" %d %d %d %d", &tmp.key1, &tmp.key2, tmp.description, tmp.units, &tmp.decimal, &tmp.recordgap, &tmp.datalength, &tmp.persistent ) == 8 ) {
-                              
-                        if( (num_return_keys) == 0 )
-                            returnkeylist=(ReturnType *)malloc(sizeof(ReturnType));
-                        else
-                            returnkeylist=(ReturnType *)realloc(returnkeylist,sizeof(ReturnType)*((num_return_keys)+1));
-                        (returnkeylist+(num_return_keys))->key1=tmp.key1;
-                        (returnkeylist+(num_return_keys))->key2=tmp.key2;
-                        strcpy( (returnkeylist+(num_return_keys))->description, tmp.description );
-                        strcpy( (returnkeylist+(num_return_keys))->units, tmp.units );
-                        (returnkeylist+(num_return_keys))->decimal = tmp.decimal;
-                        (returnkeylist+(num_return_keys))->divisor = (float)pow( 10, tmp.decimal );
-                        (returnkeylist+(num_return_keys))->datalength = tmp.datalength;
-                        (returnkeylist+(num_return_keys))->recordgap = tmp.recordgap;
-                        (returnkeylist+(num_return_keys))->persistent = tmp.persistent;
-                        (num_return_keys)++;
-                    }
-                    else
-                    {
-                        if( line[0] != ':' )
-                        {
-                             printf( "\nWARNING: Data Scan Failure\n %s\n", line );
-                        }
-                    }
-                }
+  fp=fopen(conf->File,"r");
+  if( fp == NULL ) {
+    fprintf(stderr, "ERROR: Couldn't open file %s, error = %s\n", conf->File, strerror( errno ));
+    exit(1);
+  } else {
+    returnkeylist=(ReturnType *)malloc(sizeof(ReturnType));
+    while (!feof(fp)) {
+      if (fgets(line,400,fp) != NULL){ //read line from smatool.conf
+        if( line[0] != '#' ) {
+          if( strncmp( line, ":unit conversions", 17 ) == 0 )
+            data_follows = 1;
+          if( strncmp( line, ":end unit conversions", 21 ) == 0 )
+            data_follows = 0;
+          if( data_follows == 1 ) {
+            tmp.key1=0x0;
+            tmp.key2=0x0;
+            strcpy( tmp.description, "" ); //Null out value
+            strcpy( tmp.units, "" ); //Null out value
+            tmp.divisor=0;
+            tmp.decimal=0;
+            tmp.datalength=0;
+            tmp.recordgap=0;
+            tmp.persistent=1;
+            if( sscanf( line, "%x %x \"%[^\"]\" \"%[^\"]\" %d %d %d %d", &tmp.key1, &tmp.key2, tmp.description, tmp.units, &tmp.decimal, &tmp.recordgap, &tmp.datalength, &tmp.persistent ) == 8 ) {
+              if( (num_return_keys) != 0 )
+                returnkeylist=(ReturnType *)realloc(returnkeylist,sizeof(ReturnType)*((num_return_keys)+1));
+              (returnkeylist+(num_return_keys))->key1=tmp.key1;
+              (returnkeylist+(num_return_keys))->key2=tmp.key2;
+              strcpy( (returnkeylist+(num_return_keys))->description, tmp.description );
+              strcpy( (returnkeylist+(num_return_keys))->units, tmp.units );
+              (returnkeylist+(num_return_keys))->decimal = tmp.decimal;
+              (returnkeylist+(num_return_keys))->divisor = (float)pow( 10, tmp.decimal );
+              (returnkeylist+(num_return_keys))->datalength = tmp.datalength;
+              (returnkeylist+(num_return_keys))->recordgap = tmp.recordgap;
+              (returnkeylist+(num_return_keys))->persistent = tmp.persistent;
+              (num_return_keys)++;
+            } else {
+              if( line[0] != ':' )
+                printf( "\nWARNING: Data Scan Failure\n %s\n", line );
             }
-         }
-      }
-   fclose(fp);
-   }
-   conf->num_return_keys=num_return_keys;
-   conf->returnkeylist=returnkeylist;
-   return returnkeylist;
+          } // if data followa
+        } // if no comment #
+      } // if new line
+    } // while not EOF
+    fclose(fp);
+  } // fp <> 0
+  conf->num_return_keys=num_return_keys;
+  conf->returnkeylist=returnkeylist;
 }
 
 //Convert a received string to a value
@@ -1187,8 +1077,7 @@ void  SetSwitches( ConfType *conf, FlagType *flag )
         flag->file=1;
     else
         flag->file=0;
-    if(( strlen(conf->datefrom) > 0 )
-	 &&( strlen(conf->dateto) > 0 ))
+    if(( strlen(conf->datefrom) > 0 )&&( strlen(conf->dateto) > 0 ))
         flag->daterange=1;
     else
         flag->daterange=0;
@@ -1196,54 +1085,46 @@ void  SetSwitches( ConfType *conf, FlagType *flag )
 
 unsigned char *ReadStream( ConfType * conf, FlagType * flag, ReadRecordType * readRecord, int * s, unsigned char * stream, int * streamlen, unsigned char * datalist, int * datalen, unsigned char * last_sent, int cc, int * terminated, int * togo )
 {
-   int	finished;
-   int	finished_record;
-   int  i, j=0;
+  int finished;
+  int finished_record;
+  int i, j=0;
 
-   (*togo)=ConvertStreamtoInt( stream+43, 2, togo );
-   if( flag->debug==1 ) printf( "togo=%d\n", (*togo) );
-   i=59; //Initial position of data stream
-   (*datalen)=0;
-   datalist=(unsigned char *)malloc(sizeof(char));
-   finished=0;
-   finished_record=0;
-   while( finished != 1 ) {
-     datalist=(unsigned char *)realloc(datalist,sizeof(char)*((*datalen)+(*streamlen)-i));
-     while( finished_record != 1 ) {
-        if( i> 500 ) break; //Somthing has gone wrong
-        
-        if(( i < (*streamlen) )&&(( (*terminated) != 1)||(i+3 < (*streamlen) ))) 
-	{
-           datalist[j]=stream[i];
-           j++;
-           (*datalen)=j;
-           i++;
-        }
-        else
-           finished_record = 1;
-           
-     }
-     finished_record = 0;
-     if( (*terminated) == 0 )
-     {
-         if( read_bluetooth( conf, flag, readRecord, s, streamlen, stream, cc, last_sent, terminated ) != 0 )
-         {
-             free( datalist );
-             datalist = NULL;
-         }
-             
-         if( j> 0 ) i=18;
-     }
-     else
-         finished = 1;
-   }
-   if( flag->debug== 1 ) {
-     printf( "len=%d data=", (*datalen) );
-     for( i=0; i< (*datalen); i++ )
-        printf( "%02x ", datalist[i] );
-     printf( "\n" );
-   }
-   return datalist;
+  (*togo)=ConvertStreamtoInt( stream+43, 2, togo );
+  if(flag->debug == 2) printf( "togo=%d\n", (*togo) );
+  i=59; //Initial position of data stream
+  (*datalen)=0;
+  datalist=(unsigned char *)malloc(sizeof(char));
+  finished=0;
+  finished_record=0;
+  while( finished != 1 ) {
+    datalist=(unsigned char *)realloc(datalist,sizeof(char)*((*datalen)+(*streamlen)-i));
+    while( finished_record != 1 ) {
+      if( i> 500 ) break; //Somthing has gone wrong
+      if(( i < (*streamlen) )&&(( (*terminated) != 1)||(i+3 < (*streamlen) ))) {
+        datalist[j]=stream[i];
+        j++;
+        (*datalen)=j;
+        i++;
+      } else
+        finished_record = 1;
+    }
+    finished_record = 0;
+    if( (*terminated) == 0 ) {
+      if( read_bluetooth( conf, flag, readRecord, s, streamlen, stream, cc, last_sent, terminated ) != 0 ) {
+        free( datalist );
+        datalist = NULL;
+      }
+      if( j> 0 ) i=18;
+    } else
+      finished = 1;
+  } // while not finished
+  if( flag->debug== 1 ) {
+    printf( "len=%d data=", (*datalen) );
+    for( i=0; i< (*datalen); i++ )
+      printf( "%02x ", datalist[i] );
+    printf( "\n" );
+  }
+  return datalist;
 }
 
 /* Init Config to default values */
@@ -1341,152 +1222,114 @@ int GetConfig( ConfType *conf, FlagType * flag )
 /* read  Inverter Settings from file */
 int GetInverterSetting( ConfType *conf, FlagType * flag )
 {
-    FILE 	*fp;
-    char	line[400];
-    char	variable[400];
-    char	value[400];
-    int		found_inverter=0;
+  FILE 	*fp;
+  char	line[400];
+  char	variable[400];
+  char	value[400];
 
-    if (strlen(conf->Setting) > 0 )
-    {
-        if(( fp=fopen(conf->Setting,"r")) == (FILE *)NULL )
-        {
-           fprintf(stderr, "ERROR: Could not open file %s\n", conf->Setting );
-           return( -1 ); //Could not open file
-        }
+  if (strlen(conf->Setting) > 0 ) {
+    if(( fp=fopen(conf->Setting,"r")) == (FILE *)NULL ) {
+      fprintf(stderr, "ERROR: Could not open file %s\n", conf->Setting );
+      return( -1 ); //Could not open file
     }
-    else
-    {
-        if(( fp=fopen("./invcode.in","r")) == (FILE *)NULL )
-        {
-           fprintf(stderr, "ERROR: Could not open file ./invcode.in\n" );
-           return( -1 ); //Could not open file
-        }
+  } else {
+    if(( fp=fopen("./invcode.in","r")) == (FILE *)NULL ) {
+      fprintf(stderr, "ERROR: Could not open file ./invcode.in\n" );
+      return( -1 ); //Could not open file
     }
-    while (!feof(fp)){	
-	if (fgets(line,400,fp) != NULL){				//read line from smatool.conf
-            if( line[0] != '#' ) 
-            {
-                strcpy( value, "" ); //Null out value
-                sscanf( line, "%s %s", variable, value );
-                if( flag->debug == 1 ) printf( "variable=%s value=%s\n", variable, value );
-                if( value[0] != '\0' )
-                {
-                    /*
-                    if( strcmp( variable, "Inverter" ) == 0 )
-                    {
-                       if( strcmp( value, conf->Inverter ) == 0 )
-                          found_inverter = 1;
-                       else
-                          found_inverter = 0;
-                    }
-                    if(( strcmp( variable, "Code1" ) == 0 )&& found_inverter )
-                    {
-                       sscanf( value, "%X", &conf->InverterCode[0] );
-                    }
-                    if(( strcmp( variable, "Code2" ) == 0 )&& found_inverter )
-                       sscanf( value, "%X", &conf->InverterCode[1] );
-                    if(( strcmp( variable, "Code3" ) == 0 )&& found_inverter )
-                       sscanf( value, "%X", &conf->InverterCode[2] );
-                    if(( strcmp( variable, "Code4" ) == 0 )&& found_inverter )
-                       sscanf( value, "%X", &conf->InverterCode[3] );
-                    if(( strcmp( variable, "InvCode" ) == 0 )&& found_inverter )
-                       sscanf( value, "%X", &conf->ArchiveCode );
-*/
-                }
-            }
-        }
+  }
+  while (!feof(fp)){
+    if (fgets(line,400,fp) != NULL) { //read line from smatool.conf
+      if( line[0] != '#' ) {
+        strcpy( value, "" ); //Null out value
+        sscanf( line, "%s %s", variable, value );
+        if( flag->debug == 1 ) printf( "variable=%s value=%s\n", variable, value );
+      }
     }
-    fclose( fp );
-    return( 0 );
+  }
+  fclose( fp );
+  return( 0 );
 }
 
-xmlDocPtr
-getdoc (char *docname) {
-	xmlDocPtr doc;
-	doc = xmlParseFile(docname);
-	
-	if (doc == NULL ) {
-		fprintf(stderr,"ERROR: XML Document not parsed successfully.\n");
-		return NULL;
-	}
-
-	return doc;
-}
-
-xmlXPathObjectPtr
-getnodeset (xmlDocPtr doc, xmlChar *xpath){
-	
-	xmlXPathContextPtr context;
-	xmlXPathObjectPtr result;
-
-	context = xmlXPathNewContext(doc);
-	if (context == NULL) {
-		fprintf(stderr, "ERROR: No context in xmlXPathNewContext\n");
-		return NULL;
-	}
-	result = xmlXPathEvalExpression(xpath, context);
-	xmlXPathFreeContext(context);
-	if (result == NULL) {
-		fprintf(stderr, "ERROR: No path in xmlXPathEvalExpression\n");
-		return NULL;
-	}
-	if(xmlXPathNodeSetIsEmpty(result->nodesetval)){
-		xmlXPathFreeObject(result);
-                fprintf(stderr, "ERROR: Empty path nodes\n");
-		return NULL;
-	}
-	return result;
-}
-
-int
-setup_xml_xpath( ConfType *conf, xmlChar * xpath, char * docname, int index )
+xmlDocPtr getdoc (char *docname)
 {
-    int len;
+  xmlDocPtr doc;
+  doc = xmlParseFile(docname);
 
-    sprintf( xpath, "//Datamap/Map[@index='%d']", index );
-    sprintf( docname, "%s", conf->Xml );
-    return (1);
+  if (doc == NULL ) {
+    fprintf(stderr,"ERROR: XML Document not parsed successfully.\n");
+    return NULL;
+  }
+  return doc;
 }
 
-char *
-return_xml_data( ConfType *conf, int index )
+xmlXPathObjectPtr getnodeset (xmlDocPtr doc, xmlChar *xpath)
 {
-    xmlDocPtr doc;
-    xmlNodeSetPtr nodeset;
-    xmlNodePtr cur;
-    xmlXPathObjectPtr result;
-    xmlChar xpath[30];
-    char docname[60];
-    char *return_string = (char *)NULL;
-    int i;
-    xmlChar *keyword;
-		
-    setup_xml_xpath( conf, xpath, docname, index );
-    doc = getdoc(docname);
-    result = getnodeset (doc, xpath);
-    if (result) {
-	nodeset = result->nodesetval;
-	for (i=0; i < nodeset->nodeNr; i++) {
-            cur = nodeset->nodeTab[i]->xmlChildrenNode;
-            while (cur != NULL ) {
-		if( xmlStrEqual(cur->name, (const xmlChar *)"Value")) {
-      		    keyword = xmlNodeListGetString(doc, cur->xmlChildrenNode, 1);
-                    return_string=malloc(sizeof(char)*strlen(keyword)+1);
-                    strcpy( return_string, keyword );
-                    xmlFree(keyword);
-		}
-	    	cur = cur->next;
-            }
-	}
-	xmlXPathFreeObject (result);
-    }
-    else
-        printf( "\nfailed to getnodeset" );
-    xmlFreeDoc(doc);
-    xmlCleanupParser();
+  xmlXPathContextPtr context;
+  xmlXPathObjectPtr result;
 
-    return (char *)return_string ;
+  context = xmlXPathNewContext(doc);
+  if (context == NULL) {
+    fprintf(stderr, "ERROR: No context in xmlXPathNewContext\n");
+    return NULL;
+  }
+  result = xmlXPathEvalExpression(xpath, context);
+  xmlXPathFreeContext(context);
+  if (result == NULL) {
+    fprintf(stderr, "ERROR: No path in xmlXPathEvalExpression\n");
+    return NULL;
+  }
+  if(xmlXPathNodeSetIsEmpty(result->nodesetval)) {
+    xmlXPathFreeObject(result);
+    fprintf(stderr, "ERROR: Empty path nodes\n");
+    return NULL;
+  }
+  return result;
+}
+
+int setup_xml_xpath( ConfType *conf, xmlChar * xpath, char * docname, int index )
+{
+  sprintf( xpath, "//Datamap/Map[@index='%d']", index );
+  sprintf( docname, "%s", conf->Xml );
+  return (1);
+}
+
+char * return_xml_data( ConfType *conf, int index )
+{
+  xmlDocPtr doc;
+  xmlNodeSetPtr nodeset;
+  xmlNodePtr cur;
+  xmlXPathObjectPtr result;
+  xmlChar xpath[30];
+  char docname[400];
+  char *return_string = (char *)NULL;
+  int i;
+  xmlChar *keyword;
+  
+  setup_xml_xpath( conf, xpath, docname, index );
+  doc = getdoc(docname);
+  result = getnodeset (doc, xpath);
+  if (result) {
+    nodeset = result->nodesetval;
+    for (i=0; i < nodeset->nodeNr; i++) {
+      cur = nodeset->nodeTab[i]->xmlChildrenNode;
+      while (cur != NULL ) {
+        if( xmlStrEqual(cur->name, (const xmlChar *)"Value")) {
+          keyword = xmlNodeListGetString(doc, cur->xmlChildrenNode, 1);
+          return_string=malloc(sizeof(char)*strlen(keyword)+1);
+          strcpy( return_string, keyword );
+          xmlFree(keyword);
+        }
+        cur = cur->next;
+      }
+    }
+    xmlXPathFreeObject (result);
+  } else
+    printf( "\nfailed to getnodeset" );
+  xmlFreeDoc(doc);
+  xmlCleanupParser();
+
+  return (char *)return_string ;
 }
 
 /* Print a help message */
@@ -1646,77 +1489,64 @@ int ReadCommandConfig( ConfType *conf, FlagType *flag, int argc, char **argv, in
 
 char * debugdate()
 {
-    time_t curtime;
-    struct tm *tm;
-    static char result[20];
+  time_t curtime;
+  struct tm *tm;
+  static char result[80];
 
-    curtime = time(NULL);  //get time in seconds since epoch (1/1/1970)	
-    tm = localtime(&curtime);
-    sprintf( result, "%4d-%02d-%02d %02d:%02d:%02d",
-	1900+tm->tm_year,
-	1+tm->tm_mon,
-	tm->tm_mday,
-	tm->tm_hour,
-	tm->tm_min,
-	tm->tm_sec );
-    return result;
+  curtime = time(NULL);  //get time in seconds since epoch (1/1/1970)	
+  tm = localtime(&curtime);
+  sprintf( result, "%4d-%02d-%02d %02d:%02d:%02d",
+  1900+tm->tm_year,
+  1+tm->tm_mon,
+  tm->tm_mday,
+  tm->tm_hour,
+  tm->tm_min,
+  tm->tm_sec );
+  return result;
 }
 
 int main(int argc, char **argv)
 {
   FILE *fp;
-  unsigned char *last_sent;
   ConfType conf;
   FlagType flag;
   int maximumUnits=1;
   UnitType *unit;
-  ReadRecordType readRecord;
-  ReturnType *returnkeylist;
   unsigned char received[1024];
   int i,s;
-  int install=0, update=0, already_read=0, no_dark=0;
+  int install=0, update=0, no_dark=0;
   int error=0;
-  int max_output;
-  char compurl[400];
   unsigned char tzhex[2] = { 0 };
-  time_t reporttime;
-  MYSQL_ROW row, row1;
-  char SQLQUERY[200];
+  char SQLQUERY[1024];
   int archdatalen=0, livedatalen=0;
   ArchDataType *archdatalist=NULL;
   LiveDataType *livedatalist=NULL;
 
-  char sunrise_time[6],sunset_time[6];
-
-  CURL *curl;
-  CURLcode result;
+  char sunrise_time[6], sunset_time[6];
 
   unit=(UnitType *)malloc( sizeof(UnitType) * maximumUnits);
   if( unit == NULL ) {
-    fprintf(stderr, "ERROR: Unable to allocate memory");
+    fprintf(stderr, "ERROR: Unable to allocate memory\n");
     exit(1);
   }
   memset(received,0,1024);
-  last_sent = (unsigned  char *)malloc( sizeof( unsigned char ));
-  // get the report time - used in various places, seconds since epoch (1/1/1970)
-  reporttime = time(NULL);
 
   // set config to defaults
   InitConfig( &conf );
   InitFlag( &flag );
   // read command arguments needed so can get config
   if( ReadCommandConfig( &conf, &flag, argc, argv, &no_dark, &install, &update ) < 0 ) {
-    fprintf(stderr, "ERROR: Unable to command line arguments");
+    fprintf(stderr, "ERROR: Unable to command line arguments\n");
     exit(1);
   }
   // read Config file
   if( GetConfig( &conf, &flag ) < 0 ) {
-    fprintf(stderr, "ERROR: Unable to read config file");
+    fprintf(stderr, "ERROR: Unable to read config file\n");
     exit(1);
   }
   // read command arguments  again - they overide config
   if( ReadCommandConfig( &conf, &flag, argc, argv, &no_dark ,&install, &update ) < 0 ) {
-    fprintf(stderr, "ERROR: Unable to command line arguments");
+    fprintf(stderr, "ERROR: Unable to command line arguments\n");
     exit(1);
   }
   // set switches used through the program
@@ -1733,7 +1563,7 @@ int main(int argc, char **argv)
     exit(0);
   }
   // Get Return Value lookup from file
-  returnkeylist = InitReturnKeys( &conf );
+  InitReturnKeys( &conf );
   // Set value for inverter type
   SetInverterType( &conf, &unit );
   // Get Local Timezone offset in seconds
@@ -1751,24 +1581,23 @@ int main(int argc, char **argv)
   if( flag.mysql==1 ) { 
     if( flag.debug == 1 ) printf( "Before Check Schema\n" ); 
     if( check_schema( &conf, &flag,  SCHEMA ) != 1 ) {
-      fprintf(stderr, "ERROR: Schema not correct");
+      fprintf(stderr, "ERROR: Schema not correct\n");
       exit(-1);
     }
-    if(flag.daterange==0 ) {
-      //auto set the dates
-      if( flag.debug == 1) printf( "Before auto_set_dates\n" ); 
-      auto_set_dates( &conf, &flag);
-    }
-  } else {
-    // No MySQL
-    if( flag.verbose == 1 ) printf( "QUERY RANGE    from %s to %s\n", conf.datefrom, conf.dateto ); 
   }
+  if(flag.daterange==0 ) {
+    //auto set the dates
+    if( flag.debug == 1) printf( "Before auto_set_dates\n" ); 
+    auto_set_dates( &conf, &flag);
+  }
+  if( flag.verbose == 1 ) printf( "QUERY RANGE from %s to %s\n", conf.datefrom, conf.dateto ); 
+
   // Collect data from inverter
   if((flag.location==0)||(flag.mysql==0)||no_dark==1||is_light( &conf, &flag )) {
     if (flag.debug == 1) printf("Collecting data from inverter address %s\n",conf.BTAddress);
     //Connect to Inverter
     if ((s = ConnectSocket( &conf )) < 0 ) {
-      fprintf(stderr, "ERROR: Cannot connect to socket");
+      fprintf(stderr, "ERROR: Cannot connect to socket\n");
       exit( -1 );
     }
     // Read inverter codes
