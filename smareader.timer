@@ -1,9 +1,9 @@
 [Unit]
-Description=Run smareader.service every 30 seconds 
+Description=Run smareader.service every 60 seconds 
 Requires=smareader.service
 
 [Timer]
-OnCalendar=*:*:0/30
+OnCalendar=*:*:00
 
 [Install]
 WantedBy=timers.target
