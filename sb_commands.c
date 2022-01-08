@@ -629,7 +629,6 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
       memcpy(last_sent,fl,cc);
       write((*s),fl,cc);
       already_read=0;
-      //check_send_error( &conf, &s, &rr, received, cc, last_sent, &terminated, &already_read ); 
     } // if need to Send
 
     if(!strcmp(lineread,"E")) {  //See if line is something we need to extract
@@ -688,22 +687,15 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
               break;  
 
             case 7: // extract 2nd address
-              if (flag->verbose == 1) {
-                printf( "Address = " );
-                for( i=0; i<6; i++ ) {
-                  printf( "%02x ", received[26+i] );
-                }
-                printf( "\n");
-              }
               for (i=0; i<6; i++ ) {
                 conf->MyBTAddress[i]=received[26+i];
               }
-              if (flag->debug == 1) printf("address 2 = %02x:%02x:%02x:%02x:%02x:%02x \n", conf->MyBTAddress[0], conf->MyBTAddress[1], conf->MyBTAddress[2], conf->MyBTAddress[3], conf->MyBTAddress[4], conf->MyBTAddress[5] );
+              if (flag->verbose == 1) printf("Address = %02x:%02x:%02x:%02x:%02x:%02x \n", conf->MyBTAddress[0], conf->MyBTAddress[1], conf->MyBTAddress[2], conf->MyBTAddress[3], conf->MyBTAddress[4], conf->MyBTAddress[5] );
               break;
 
             case 9: // extract Time from Inverter
               idate=ConvertStreamtoTime( received+66, 4, &idate, &day, &month, &year, &hour, &minute, &second );
-              printf("Inverter date = %4d-%02d-%02d %02d:%02d:%02d\n",year, month, day, hour, minute, second);
+              if (flag->verbose == 1) printf("Inverter date = %4d-%02d-%02d %02d:%02d:%02d\n",year, month, day, hour, minute, second);
               break;
     
             case 12: // extract time strings $TIMESTRING
@@ -1000,13 +992,13 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
               
             case 31: // LOGIN Data
               idate=ConvertStreamtoTime( received+59, 4, &idate, &day, &month, &year, &hour, &minute, &second );
-              if( flag->debug == 1) printf("Inverter date = %4d-%02d-%02d %02d:%02d:%02d\n",year, month, day, hour, minute,second);
+              if( flag->verbose == 1) printf("Inverter date = %4d-%02d-%02d %02d:%02d:%02d\n",year, month, day, hour, minute,second);
               if (flag->debug == 1) printf("SUSyID = %02x:%02x\n", received[33], received[34]);
               unit[0]->Serial[3]=received[35];
               unit[0]->Serial[2]=received[36];
               unit[0]->Serial[1]=received[37];
               unit[0]->Serial[0]=received[38];
-              if (flag->verbose == 1) printf( "Serial = %02x:%02x:%02x:%02x\n",unit[0]->Serial[3]&0xff,unit[0]->Serial[2]&0xff,unit[0]->Serial[1]&0xff,unit[0]->Serial[0]&0xff );  
+              if (flag->debug == 1) printf( "Serial = %02x:%02x:%02x:%02x\n",unit[0]->Serial[3]&0xff,unit[0]->Serial[2]&0xff,unit[0]->Serial[1]&0xff,unit[0]->Serial[0]&0xff );  
               //This is where we poll for other inverters
               inverter_serial=(unit[0]->Serial[0]<<24) + (unit[0]->Serial[1]<<16) + (unit[0]->Serial[2]<<8) + unit[0]->Serial[3];
               sprintf( unit[0]->SerialStr, "%llu", inverter_serial ); 

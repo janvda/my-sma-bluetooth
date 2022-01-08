@@ -62,7 +62,6 @@ typedef struct{
   char MySqlDatabase[20];     /*--mysqldb     -d 	*/
   char MySqlUser[80];         /*--mysqluser   -user 	*/
   char MySqlPwd[80];          /*--mysqlpwd    -pwd 	*/
-  char Setting[80];           /*inverter model data*/
   unsigned int MySUSyID[2];   /*SUSyID  of this app*/
   unsigned int MySerial[4];   /*Serial  of this app*/
   unsigned int MyBTAddress[6];   /*Serial  of this app*/

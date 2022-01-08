@@ -302,115 +302,6 @@ unsigned char conv(char *nn)
 		return res;
 }
 
-int
-check_send_error( FlagType * flag, int *s, int *rr, unsigned char *received, int cc, unsigned char *last_sent, int *terminated, int *already_read )
-{
-    int bytes_read,i,j;
-    unsigned char buf[1024]; /*read buffer*/
-    unsigned char header[3]; /*read buffer*/
-    struct timeval tv;
-    fd_set readfds;
-
-    tv.tv_sec = 0; // set timeout of reading
-    tv.tv_usec = 5000;
-    memset(buf,0,1024);
-
-    FD_ZERO(&readfds);
-    FD_SET((*s), &readfds);
-				
-    select((*s)+1, &readfds, NULL, NULL, &tv);
-				
-    (*terminated) = 0; // Tag to tell if string has 7e termination
-    // first read the header to get the record length
-    if (FD_ISSET((*s), &readfds)){	// did we receive anything within 5 seconds
-        bytes_read = recv((*s), header, sizeof(header), 0); //Get length of string
-	(*rr) = 0;
-        for( i=0; i<sizeof(header); i++ ) {
-            received[(*rr)] = header[i];
-	    if (flag->debug == 1) printf("%02x ", received[(*rr)]);
-            (*rr)++;
-        }
-    }
-    else
-    {
-       if( flag->verbose==1) printf("Timeout reading bluetooth socket\n");
-       (*rr) = 0;
-       memset(received,0,1024);
-       return -1;
-    }
-    if (FD_ISSET((*s), &readfds)){	// did we receive anything within 5 seconds
-        bytes_read = recv((*s), buf, header[1]-3, 0); //Read the length specified by header
-    }
-    else
-    {
-       if( flag->verbose==1) printf("Timeout reading bluetooth socket\n");
-       (*rr) = 0;
-       memset(received,0,1024);
-       return -1;
-    }
-    if ( bytes_read > 0){
-	if (flag->debug == 1){ 
-           printf("\nReceiving\n");
-           printf( "    %08x: .. .. .. .. .. .. .. .. .. .. .. .. ", 0 );
-           j=12;
-           for( i=0; i<sizeof(header); i++ ) {
-              if( j%16== 0 )
-                 printf( "\n    %08x: ",j);
-              printf("%02x ",header[i]);
-              j++;
-           }
-	   for (i=0;i<bytes_read;i++) {
-              if( j%16== 0 )
-                 printf( "\n    %08x: ",j);
-              printf("%02x ",buf[i]);
-              j++;
-           }
-           printf(" rr=%d",(bytes_read+(*rr)));
-	   printf("\n\n");
-        }
-        if ((cc==bytes_read)&&(memcmp(received,last_sent,cc) == 0)){
-          fprintf(stderr, "ERROR received what we sent!\n");
-          //Need to do something
-        }
-        if( buf[ bytes_read-1 ] == 0x7e )
-           (*terminated) = 1;
-        else
-           (*terminated) = 0;
-        for (i=0;i<bytes_read;i++){ //start copy the rec buffer in to received
-            if (buf[i] == 0x7d){ //did we receive the escape char
-	        switch (buf[i+1]){   // act depending on the char after the escape char
-					
-		    case 0x5e :
-	                received[(*rr)] = 0x7e;
-		        break;
-							   
-		    case 0x5d :
-		        received[(*rr)] = 0x7d;
-		        break;
-							
-		    default :
-		        received[(*rr)] = buf[i+1] ^ 0x20;
-		        break;
-	        }
-		    i++;
-	    }
-	    else { 
-               received[(*rr)] = buf[i];
-            }
-	    if (flag->debug == 1) printf("%02x ", received[(*rr)]);
-	    (*rr)++;
-	}
-        fix_length_received( flag, received, rr );
-	if (flag->debug == 1) {
-	    printf("\n");
-            for( i=0;i<(*rr); i++ ) printf("%02x ", received[(i)]);
-        }
-	if (flag->debug == 1) printf("\n\n");
-        (*already_read)=1;
-    }	
-    return 0;
-}
-
 int empty_read_bluetooth(  ConfType * conf, FlagType * flag, ReadRecordType * readRecord, int *s, int *rr, unsigned char *received, int cc, unsigned char *last_sent, int *terminated )
 {
   int bytes_read,i,j, last_decoded;
@@ -419,7 +310,7 @@ int empty_read_bluetooth(  ConfType * conf, FlagType * flag, ReadRecordType * re
   struct timeval tv;
   fd_set readfds;
 
-  tv.tv_sec = 1; // set timeout of reading
+  tv.tv_sec = 0; // just cleaning BT before sending, so no timeout 
   tv.tv_usec = 0;
   memset(buf,0,1024);
 
@@ -429,11 +320,9 @@ int empty_read_bluetooth(  ConfType * conf, FlagType * flag, ReadRecordType * re
   if( select((*s)+1, &readfds, NULL, NULL, &tv) <  0) {
     fprintf(stderr, "ERROR: select error has occurred\n");
   }
-
-
   (*terminated) = 0; // Tag to tell if string has 7e termination
   // first read the header to get the record length
-  if (FD_ISSET((*s), &readfds)) { // did we receive anything within 5 seconds
+  if (FD_ISSET((*s), &readfds)) { // did we receive anything in the mean time?
     bytes_read = recv((*s), header, sizeof(header), 0); //Get length of string
     (*rr) = 0;
     for( i=0; i<sizeof(header); i++ ) {
@@ -442,6 +331,8 @@ int empty_read_bluetooth(  ConfType * conf, FlagType * flag, ReadRecordType * re
       (*rr)++;
     }
   } else {
+    // No problem if no data waiting, just clearing BT anyway
+    //fprintf(stderr, "ERROR: Timeout reading bluetooth socket (empty_read_bluetooth, header)\n");
     memset(received,0,1024);
     (*rr)=0;
     return -1;
@@ -449,6 +340,7 @@ int empty_read_bluetooth(  ConfType * conf, FlagType * flag, ReadRecordType * re
   if (FD_ISSET((*s), &readfds)) { // did we receive anything within 5 seconds
     bytes_read = recv((*s), buf, header[1]-3, 0); //Read the length specified by header
   } else {
+    fprintf(stderr, "ERROR: Timeout reading bluetooth socket (empty_read_bluetooth, body)\n");
     memset(received,0,1024);
     (*rr)=0;
     return -1;
@@ -590,7 +482,7 @@ int read_bluetooth( ConfType * conf, FlagType * flag, ReadRecordType * readRecor
       (*rr)++;
     }
   } else {
-    if( flag->verbose==1) printf("Timeout reading bluetooth socket\n");
+    fprintf(stderr, "ERROR: Timeout reading bluetooth socket (read_bluetooth, header)\n");
     (*rr) = 0;
     memset(received,0,1024);
     return -1;
@@ -598,7 +490,7 @@ int read_bluetooth( ConfType * conf, FlagType * flag, ReadRecordType * readRecor
   if (FD_ISSET((*s), &readfds)){ // did we receive anything within 5 seconds
     bytes_read = recv((*s), buf, header[1]-3, 0); //Read the length specified by header
   } else {
-    if( flag->verbose==1) printf("Timeout reading bluetooth socket\n");
+    fprintf(stderr, "ERROR: Timeout reading bluetooth socket (read_bluetooth, body)\n");
     (*rr) = 0;
     memset(received,0,1024);
     return -1;
@@ -1053,7 +945,7 @@ time_t ConvertStreamtoTime( unsigned char * stream, int length, time_t * value, 
    return (*value);
 }
 
-// Set switches to save lots of strcmps
+// Set switches in flag variable to save lots of strcmps
 void  SetSwitches( ConfType *conf, FlagType *flag )  
 {
     //Check if all location variables are set
@@ -1130,7 +1022,7 @@ void InitConfig( ConfType *conf )
 {
     strcpy( conf->Config,"/etc/smatool.conf");
     strcpy( conf->BTAddress, "" );  
-    conf->bt_timeout = 30;  
+    conf->bt_timeout = 5;
     strcpy( conf->Password, "0000" );  
     strcpy( conf->File, "/etc/sma.in" );  
     strcpy( conf->Xml, "/etc/smatool.xml" );  
@@ -1215,38 +1107,6 @@ int GetConfig( ConfType *conf, FlagType * flag )
     }
     fclose( fp );
     return( 0 );
-}
-
-/* read  Inverter Settings from file */
-int GetInverterSetting( ConfType *conf, FlagType * flag )
-{
-  FILE 	*fp;
-  char	line[400];
-  char	variable[400];
-  char	value[400];
-
-  if (strlen(conf->Setting) > 0 ) {
-    if(( fp=fopen(conf->Setting,"r")) == (FILE *)NULL ) {
-      fprintf(stderr, "ERROR: Could not open file %s\n", conf->Setting );
-      return( -1 ); //Could not open file
-    }
-  } else {
-    if(( fp=fopen("./invcode.in","r")) == (FILE *)NULL ) {
-      fprintf(stderr, "ERROR: Could not open file ./invcode.in\n" );
-      return( -1 ); //Could not open file
-    }
-  }
-  while (!feof(fp)){
-    if (fgets(line,400,fp) != NULL) { //read line from smatool.conf
-      if( line[0] != '#' ) {
-        strcpy( value, "" ); //Null out value
-        sscanf( line, "%s %s", variable, value );
-        if( flag->debug == 1 ) printf( "Config file variable %s = %s\n", variable, value );
-      }
-    }
-  }
-  fclose( fp );
-  return( 0 );
 }
 
 xmlDocPtr getdoc (char *docname)
@@ -1540,9 +1400,38 @@ int main(int argc, char **argv)
   }
   // set switches used through the program
   SetSwitches( &conf, &flag );
+  // Print all Conf settings after init
+  if( flag.debug == 1) {
+    printf("Configuration parameters:\n");
+    printf("BTAddress = %s\n", conf.BTAddress);
+    printf("bt_timeout = %d\n", conf.bt_timeout);
+    printf("Password = %s\n", conf.Password);
+    printf("Config = %s\n", conf.Config);
+    printf("File = %s\n", conf.File);
+    printf("Xml = %s\n", conf.Xml);
+    printf("latitude = %f\n", conf.latitude_f);
+    printf("longitude = %f\n", conf.longitude_f);
+    printf("MySqlHost = %s\n", conf.MySqlHost);
+    printf("MySqlDatabase = %s\n", conf.MySqlDatabase);
+    printf("MySqlUser = %s\n", conf.MySqlUser);
+    printf("MySqlPwd = %s\n", conf.MySqlPwd);
+    printf("MySUSyID = %d %d\n", conf.MySUSyID[0], conf.MySUSyID[1]);
+    printf("MySerial = %d %d %d %d\n", conf.MySerial[0], conf.MySerial[1], conf.MySerial[2], conf.MySerial[3]);
+    printf("MyBTAddress = %d %d %d %d %d %d\n", conf.MyBTAddress[0], conf.MyBTAddress[1], conf.MyBTAddress[2], conf.MyBTAddress[3], conf.MyBTAddress[4], conf.MyBTAddress[5]);
+    printf("NetID = %d\n", conf.NetID);
+    printf("datefrom = %s\n", conf.datefrom);
+    printf("dateto = %s\n", conf.dateto);
+    printf("Switches:\n");
+    printf("debug = %d\n", flag.debug);
+    printf("verbose = %d\n", flag.verbose);
+    printf("daterange = %d\n", flag.daterange);
+    printf("location = %d\n", flag.location);
+    printf("test = %d\n", flag.test);
+    printf("mysql = %d\n", flag.mysql);
+    printf("file = %d\n", flag.file);
+  }
   // If asked for installing MySQL database structure
-  if(( install==1 )&&( flag.mysql==1 ))
-  {
+  if(( install==1 )&&( flag.mysql==1 )) {
     install_mysql_tables( &conf, &flag, SCHEMA );
     exit(0);
   }
@@ -1592,9 +1481,10 @@ int main(int argc, char **argv)
     // Read inverter codes
     if (flag.file == 1)
       fp=fopen(conf.File,"r");
-    else
-      fp=fopen("/etc/sma.in","r");
-
+    else {
+      fprintf(stderr, "ERROR: Cannot connect open inverter code file %s\n", conf.File);
+      exit(1);
+    }
     InverterCommand( "init", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
     InverterCommand( "login", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
     InverterCommand( "typelabel", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
