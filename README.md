@@ -15,4 +15,6 @@ To compile run make smatool
 
 To install run make install
 
-Make sure you edit the /etc/smatool.conf to update the SMA converter bluetooth MAC address
+Make sure you edit the /etc/smatool.conf to update the SMA converter bluetooth MAC address and password
+
+Also added systemd timer and service files for auto starting every X seconds
