@@ -1,7 +1,7 @@
 /* tool to read power production data for SMA solar power convertors 
    Copyright Wim Hofman 2010 
    Copyright Stephen Collier 2010,2011 
-   Copyright Edwin Zuidema 2020, 2021
+   Copyright Edwin Zuidema 2020, 2021, 2022
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -16,6 +16,10 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 
+// v2.0 Changed to UTC timezone
+
+#define PROGRAM "smatool"
+#define VERSION "2.0 (2022-01-18)"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1377,6 +1381,8 @@ int main(int argc, char **argv)
   LiveDataType *livedatalist=NULL;
 
   char sunrise_time[6], sunset_time[6];
+
+  printf("%s version %s\n", PROGRAM, VERSION);
 
   unit=(UnitType *)malloc( sizeof(UnitType) * maximumUnits);
   if( unit == NULL ) {
