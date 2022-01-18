@@ -239,8 +239,7 @@ int check_schema( ConfType * conf, FlagType * flag, char *SCHEMA )
     if( strcmp( DB_SCHEMA, SCHEMA ) == 0 )
       found=1;
   }
-  mysql_free_result(res);
-  mysql_close(conn);
+  CloseMySqlDatabase();
   if( found != 1 ) {
     printf( "Please Update database schema by using --UPDATE (DB scheme = %s, application scheme = %s)\n", DB_SCHEMA, SCHEMA );
   }
@@ -248,7 +247,7 @@ int check_schema( ConfType * conf, FlagType * flag, char *SCHEMA )
 }
 
 
-void live_mysql( ConfType conf, FlagType flag, LiveDataType *livedatalist, int livedatalen )
+void live_mysql( ConfType * conf, FlagType * flag, LiveDataType *livedatalist, int livedatalen )
 /* Live inverter values mysql update */
 {
   struct tm *utctime;
@@ -259,7 +258,7 @@ void live_mysql( ConfType conf, FlagType flag, LiveDataType *livedatalist, int l
   int i;
   MYSQL_ROW row;
 
-  OpenMySqlDatabase( conf.MySqlHost, conf.MySqlUser, conf.MySqlPwd, conf.MySqlDatabase);
+  OpenMySqlDatabase( conf->MySqlHost, conf->MySqlUser, conf->MySqlPwd, conf->MySqlDatabase);
   for( i=0; i<livedatalen; i++ ) {
 	// Storing in Inverter timezone (mostly set to UTC)
     utctime = gmtime(&((livedatalist+i)->date));
@@ -268,12 +267,13 @@ void live_mysql( ConfType conf, FlagType flag, LiveDataType *livedatalist, int l
     year = utctime->tm_year + 1900;
     hour = utctime->tm_hour;
     minute = utctime->tm_min;
-    sprintf( datetime, "%04d-%02d-%02d %02d:%02d:00", year, month, day, hour, minute );
-    if( flag.debug == 1 ) printf( "utc datetime = %s\n", datetime);    
+    second = utctime->tm_sec;
+    sprintf( datetime, "%04d-%02d-%02d %02d:%02d:%02d", year, month, day, hour, minute, second);
+    if( flag->debug == 1 ) printf( "utc datetime = %s\n", datetime);    
 	sprintf(SQLQUERY,"INSERT INTO LiveData ( DateTime, Inverter, Serial, Description, Value, Units ) VALUES (\'%s\', \'%s\', %lld, \'%s\', \'%s\', \'%s\'  ) ON DUPLICATE KEY UPDATE DateTime=Datetime, Inverter=VALUES(Inverter), Serial=VALUES(Serial), Description=VALUES(Description), Description=VALUES(Description), Value=VALUES(Value), Units=VALUES(Units)", datetime, (livedatalist+i)->inverter, (livedatalist+i)->serial, (livedatalist+i)->Description, (livedatalist+i)->Value, (livedatalist+i)->Units);
-	if (flag.debug == 1) printf("Live Data SQL query: %s\n",SQLQUERY);
+	if (flag->debug == 1) printf("Live Data SQL query: %s\n",SQLQUERY);
 	DoQuery(SQLQUERY);
   }
-  mysql_close(conn);
-  if (flag.debug == 1) printf("End live_mysql\n");
+  CloseMySqlDatabase();
+  if (flag->debug == 1) printf("End live_mysql\n");
 }

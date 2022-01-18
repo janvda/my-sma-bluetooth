@@ -1369,6 +1369,9 @@ int main(int argc, char **argv)
   int install=0, update=0, no_dark=0;
   unsigned char tzhex[2] = { 0 };
   char SQLQUERY[1024];
+  struct tm *utctime;
+  char datetime[40];
+  int day,month,year,hour,minute,second;
   int archdatalen=0, livedatalen=0;
   ArchDataType *archdatalist=NULL;
   LiveDataType *livedatalist=NULL;
@@ -1514,7 +1517,17 @@ int main(int argc, char **argv)
     OpenMySqlDatabase( conf.MySqlHost, conf.MySqlUser, conf.MySqlPwd, conf.MySqlDatabase );
     if(archdatalen > 0) printf( "Storing archive data (%d records)\n",  archdatalen);
     for( i=1; i<archdatalen; i++ ) { //Start at 1 as the first record is a dummy 
-      sprintf(SQLQUERY,"INSERT INTO DayData ( DateTime, Inverter, Serial, CurrentPower, EtotalToday ) VALUES ( FROM_UNIXTIME(%ld),\'%s\',%ld,%0.f, %.3f ) ON DUPLICATE KEY UPDATE DateTime=Datetime, Inverter=VALUES(Inverter), Serial=VALUES(Serial), CurrentPower=VALUES(CurrentPower), EtotalToday=VALUES(EtotalToday)",(archdatalist+i)->date, (archdatalist+i)->inverter, (archdatalist+i)->serial, (archdatalist+i)->current_value, (archdatalist+i)->accum_value );
+	  // Storing in Inverter timezone (mostly set to UTC)
+      utctime = gmtime(&((archdatalist+i)->date));
+      day = utctime->tm_mday;
+      month = utctime->tm_mon +1;
+      year = utctime->tm_year + 1900;
+      hour = utctime->tm_hour;
+      minute = utctime->tm_min;
+      second = utctime->tm_sec;
+      sprintf( datetime, "%04d-%02d-%02d %02d:%02d:%02d", year, month, day, hour, minute, second);
+      if( flag.debug == 1 ) printf( "utc datetime = %s\n", datetime);    
+      sprintf(SQLQUERY,"INSERT INTO DayData ( DateTime, Inverter, Serial, CurrentPower, EtotalToday ) VALUES (\'%s\',\'%s\',%ld,%0.f, %.3f ) ON DUPLICATE KEY UPDATE DateTime=Datetime, Inverter=VALUES(Inverter), Serial=VALUES(Serial), CurrentPower=VALUES(CurrentPower), EtotalToday=VALUES(EtotalToday)",datetime, (archdatalist+i)->inverter, (archdatalist+i)->serial, (archdatalist+i)->current_value, (archdatalist+i)->accum_value );
       if (flag.debug == 1) printf("SQL Query: %s\n",SQLQUERY);
       DoQuery(SQLQUERY);
     }
@@ -1522,9 +1535,7 @@ int main(int argc, char **argv)
 
     // Update Mysql with live data
     if(livedatalen > 0) printf( "Storing live data (%d records)\n",  livedatalen); 
-    live_mysql( conf, flag, livedatalist, livedatalen );
-//    mysql_free_result( res );
-//    mysql_close(conn);
+    live_mysql( &conf, &flag, livedatalist, livedatalen );
   }
 
   // Clean up data
