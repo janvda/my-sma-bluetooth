@@ -245,8 +245,10 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
           strcpy( lineread, "" );
           sleep(10);
           failedbluetooth++;
-          if( failedbluetooth > 3 )
+          if( failedbluetooth > 3 ) {
+            if (flag->debug == 1) printf("Failed BT more than 3 times, returning error\n");
             return( -1 );
+          }
         } else {
           already_read=0;
           if (flag->debug == 1) { 
@@ -1059,10 +1061,11 @@ void InverterCommand(  const char * command, ConfType * conf, FlagType * flag, U
     fprintf(stderr, "ERROR: Cannot seek sma.in file" );
   if(( linenum = GetLine( command, fp )) > 0 ) {
     if( ProcessCommand( conf, flag, unit, s, fp, &linenum, archdatalist, archdatalen, livedatalist, livedatalen ) < 0 ) {
-      fprintf(stderr, "ERROR: Cannot process command ");
+      fprintf(stderr, "ERROR: Cannot process Command %s\n", command);
+      exit(-1);
     }
   } else {
     //Command not found in config
-    fprintf(stderr, "ERROR: Command %s not found", command );
+    fprintf(stderr, "ERROR: Command %s not found in config!\n", command );
   }
 }

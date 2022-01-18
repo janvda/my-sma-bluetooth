@@ -674,16 +674,15 @@ unsigned char *  get_timezone_in_seconds( FlagType * flag, unsigned char *tzhex 
   isdst  = loctime->tm_isdst;
   utctime = gmtime(&curtime);
 
-  if( flag->debug == 1 ) printf( "utc=%04d-%02d-%02d %02d:%02d local=%04d-%02d-%02d %02d:%02d diff %d hours\n", utctime->tm_year+1900, utctime->tm_mon+1,utctime->tm_mday,utctime->tm_hour,utctime->tm_min, year, month, day, hour, minute, hour-utctime->tm_hour );
+  if( flag->debug == 1 ) printf( "utc=%04d-%02d-%02d %02d:%02d this machine local=%04d-%02d-%02d %02d:%02d diff %d hours\n", utctime->tm_year+1900, utctime->tm_mon+1,utctime->tm_mday,utctime->tm_hour,utctime->tm_min, year, month, day, hour, minute, hour-utctime->tm_hour );
   localOffset=(hour-utctime->tm_hour)+(float)(minute-utctime->tm_min)/60;
-  if( flag->debug == 1 ) printf( "localOffset=%f\n", localOffset );
   if(( year > utctime->tm_year+1900 )||( month > utctime->tm_mon+1 )||( day > utctime->tm_mday ))
     localOffset+=24;
   if(( year < utctime->tm_year+1900 )||( month < utctime->tm_mon+1 )||( day < utctime->tm_mday ))
     localOffset-=24;
-  if( flag->debug == 1 ) printf( "localOffset=%f isdst=%d\n", localOffset, isdst );
   if( isdst > 0 ) 
     localOffset=localOffset-1;
+  if( flag->debug == 1 ) printf( "localOffset=%0.2f (hours), includes dst=%d\n", localOffset, isdst );
   tzsecs = (localOffset) * 3600 + 1;
   if( tzsecs < 0 )
     tzsecs=65536+tzsecs;
@@ -696,13 +695,13 @@ unsigned char *  get_timezone_in_seconds( FlagType * flag, unsigned char *tzhex 
 }
 
 int auto_set_dates( ConfType * conf, FlagType * flag )
-/*  If there are no dates set - get last updated date and go from there to NOW */
+/*  If there are no dates set - get last updated date and go from there to NOW (UTC) */
 {
   MYSQL_ROW row;
   char SQLQUERY[200];
   time_t curtime;
   int day,month,year,hour,minute;
-  struct tm *loctime;
+  struct tm *utctime;
 
   if( flag->mysql == 1 ) {
     OpenMySqlDatabase( conf->MySqlHost, conf->MySqlUser, conf->MySqlPwd, conf->MySqlDatabase);
@@ -720,15 +719,17 @@ int auto_set_dates( ConfType * conf, FlagType * flag )
     if( flag->debug == 1 ) printf( "datefrom %s\n", conf->datefrom);
   }
   curtime = time(NULL);  //get time in seconds since epoch (1/1/1970)	
-  loctime = localtime(&curtime);
-  day = loctime->tm_mday;
-  month = loctime->tm_mon +1;
-  year = loctime->tm_year + 1900;
-  hour = loctime->tm_hour;
-  minute = loctime->tm_min; 
+  // EZ fixed to UTC
+  utctime = gmtime(&curtime);
+  day = utctime->tm_mday;
+  month = utctime->tm_mon +1;
+  year = utctime->tm_year + 1900;
+  hour = utctime->tm_hour;
+  minute = utctime->tm_min;
+  if( flag->debug == 1 ) printf( "utc=%04d-%02d-%02d %02d:%02d\n", year, month, day, hour, minute);
   sprintf( conf->dateto, "%04d-%02d-%02d %02d:%02d:00", year, month, day, hour, minute );
   flag->daterange=1;
-  if( flag->verbose == 1 ) printf( "Auto set dates: from %s to %s\n", conf->datefrom, conf->dateto );
+  if( flag->verbose == 1 ) printf( "Auto set dates: from %s to %s (UTC)\n", conf->datefrom, conf->dateto );
   return 1;
 }
 
@@ -918,7 +919,7 @@ int ConvertStreamtoInt( unsigned char * stream, int length, int * value )
 time_t ConvertStreamtoTime( unsigned char * stream, int length, time_t * value, int *day, int *month, int *year, int *hour, int *minute, int *second )
 {
    int	i, nullvalue;
-   struct tm *loctime;
+   struct tm *utctime;
    
    (*value) = 0;
    nullvalue = 1;
@@ -934,13 +935,13 @@ time_t ConvertStreamtoTime( unsigned char * stream, int length, time_t * value, 
    else
    {
       //Get human readable dates
-      loctime = localtime(value);
-      (*day) = loctime->tm_mday;
-      (*month) = loctime->tm_mon +1;
-      (*year) = loctime->tm_year + 1900;
-      (*hour) = loctime->tm_hour;
-      (*minute) = loctime->tm_min; 
-      (*second) = loctime->tm_sec; 
+      utctime = gmtime(value);
+      (*day) = utctime->tm_mday;
+      (*month) = utctime->tm_mon +1;
+      (*year) = utctime->tm_year + 1900;
+      (*hour) = utctime->tm_hour;
+      (*minute) = utctime->tm_min; 
+      (*second) = utctime->tm_sec; 
    }
    return (*value);
 }
@@ -1001,6 +1002,7 @@ unsigned char *ReadStream( ConfType * conf, FlagType * flag, ReadRecordType * re
     finished_record = 0;
     if( (*terminated) == 0 ) {
       if( read_bluetooth( conf, flag, readRecord, s, streamlen, stream, cc, last_sent, terminated ) != 0 ) {
+		if( flag->debug== 1 ) printf("ReadStream error reading BT, freeing datalist");
         free( datalist );
         datalist = NULL;
       }
