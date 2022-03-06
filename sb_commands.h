@@ -22,6 +22,6 @@ extern int ConnectSocket ( ConfType * conf );
 
 extern int OpenInverter( ConfType * conf, FlagType * flag, UnitType **unit, int * s, ArchDataType **archdatalist, int *archdatalen , LiveDataType **livedatalist, int *livedatalen );
 
-extern char * InverterCommand(  const char * command, ConfType * conf, FlagType * flag, UnitType **unit, int *s, FILE * fp, ArchDataType **archdatalist, int *archdatalen , LiveDataType **livedatalist, int *livedatalen);
+extern int InverterCommand(  const char * command, ConfType * conf, FlagType * flag, UnitType **unit, int *s, FILE * fp, ArchDataType **archdatalist, int *archdatalen , LiveDataType **livedatalist, int *livedatalen);
 
-extern unsigned char * ReadStream( ConfType *, FlagType *, ReadRecordType *, int *, unsigned char *, int *, unsigned char *, int *, unsigned char *, int , int *, int * );
+//extern unsigned char * ReadStream( ConfType *, FlagType *, ReadRecordType *, int *, unsigned char *, int *, unsigned char *, int *, unsigned char *, int , int *, int * );

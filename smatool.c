@@ -17,9 +17,11 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 
 // v2.0 Changed to UTC timezone
+// v2.1 Fixed the return code upon successful retrieving inverter data
+// v2.2 Fixed hanging on waiting for more BT data (Status 0e and no more data), removed fprintf to stderr, fixed sunset/rise
 
 #define PROGRAM "smatool"
-#define VERSION "2.0 (2022-01-18)"
+#define VERSION "2.2 (2022-03-06)"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -322,7 +324,7 @@ int empty_read_bluetooth(  ConfType * conf, FlagType * flag, ReadRecordType * re
   FD_SET((*s), &readfds);
 
   if( select((*s)+1, &readfds, NULL, NULL, &tv) <  0) {
-    fprintf(stderr, "ERROR: select error has occurred\n");
+    printf("ERROR: select error has occurred\n");
   }
   (*terminated) = 0; // Tag to tell if string has 7e termination
   // first read the header to get the record length
@@ -336,7 +338,7 @@ int empty_read_bluetooth(  ConfType * conf, FlagType * flag, ReadRecordType * re
     }
   } else {
     // No problem if no data waiting, just clearing BT anyway
-    //fprintf(stderr, "ERROR: Timeout reading bluetooth socket (empty_read_bluetooth, header)\n");
+    if (flag->debug == 1) printf("Timeout reading bluetooth socket (empty_read_bluetooth, header)\n");
     memset(received,0,1024);
     (*rr)=0;
     return -1;
@@ -344,7 +346,7 @@ int empty_read_bluetooth(  ConfType * conf, FlagType * flag, ReadRecordType * re
   if (FD_ISSET((*s), &readfds)) { // did we receive anything within 5 seconds
     bytes_read = recv((*s), buf, header[1]-3, 0); //Read the length specified by header
   } else {
-    fprintf(stderr, "ERROR: Timeout reading bluetooth socket (empty_read_bluetooth, body)\n");
+    printf("ERROR: Timeout reading bluetooth socket (empty_read_bluetooth, body)\n");
     memset(received,0,1024);
     (*rr)=0;
     return -1;
@@ -471,7 +473,7 @@ int read_bluetooth( ConfType * conf, FlagType * flag, ReadRecordType * readRecor
   FD_SET((*s), &readfds);
       
   if( select((*s)+1, &readfds, NULL, NULL, &tv) <  0) {
-    fprintf(stderr, "ERROR: select error has occurred\n");
+    printf("ERROR: select error has occurred\n");
   }
       
   if(flag->debug == 1) printf("Reading bluetooth packet (socket=%d)\n", (*s));
@@ -486,7 +488,7 @@ int read_bluetooth( ConfType * conf, FlagType * flag, ReadRecordType * readRecor
       (*rr)++;
     }
   } else {
-    fprintf(stderr, "ERROR: Timeout reading bluetooth socket (read_bluetooth, header)\n");
+    printf("ERROR: Timeout reading bluetooth socket (read_bluetooth, header)\n");
     (*rr) = 0;
     memset(received,0,1024);
     return -1;
@@ -494,7 +496,7 @@ int read_bluetooth( ConfType * conf, FlagType * flag, ReadRecordType * readRecor
   if (FD_ISSET((*s), &readfds)){ // did we receive anything within 5 seconds
     bytes_read = recv((*s), buf, header[1]-3, 0); //Read the length specified by header
   } else {
-    fprintf(stderr, "ERROR: Timeout reading bluetooth socket (read_bluetooth, body)\n");
+    printf("ERROR: Timeout reading bluetooth socket (read_bluetooth, body)\n");
     (*rr) = 0;
     memset(received,0,1024);
     return -1;
@@ -599,7 +601,7 @@ int read_bluetooth( ConfType * conf, FlagType * flag, ReadRecordType * readRecor
       printf("\n");
     } // if debug
     if ((cc==bytes_read)&&(memcmp(received,last_sent,cc) == 0)){
-      fprintf(stderr, "ERROR: received what we sent!\n");
+      printf("ERROR: received what we sent!\n");
       //Need to do something
       // EZ added:
       return -1;
@@ -607,7 +609,7 @@ int read_bluetooth( ConfType * conf, FlagType * flag, ReadRecordType * readRecor
     // Check check bit
     checkbit=header[0]^header[1]^header[2];
     if( checkbit != header[3] ) {
-      fprintf(stderr, "ERROR: Checkbit Error! %02x!=%02x\n",  header[0]^header[1]^header[2], header[3]);
+      printf("ERROR: Checkbit Error! %02x!=%02x\n",  header[0]^header[1]^header[2], header[3]);
       (*rr) = 0;
       memset(received,0,1024);
       return -1;
@@ -652,7 +654,7 @@ int select_str(FlagType * flag, char *s)
   for (i=0; i < sizeof(accepted_strings)/sizeof(*accepted_strings);i++) {
      if (flag->debug == 2) printf( "\ni=%d accepted=%s string=%s", i, accepted_strings[i], s );
      if (!strcmp(s, accepted_strings[i])) {
-     if (flag->debug == 1) printf( "Accepted %s (returning %d)\n", accepted_strings[i], i);
+     if (flag->debug == 1) printf( "Accepted %s, returning code %d\n", accepted_strings[i], i);
        return i;
      }
   }
@@ -746,18 +748,27 @@ int is_light( ConfType * conf, FlagType * flag )
 
   if( flag->mysql == 1 ) {
     OpenMySqlDatabase( conf->MySqlHost, conf->MySqlUser, conf->MySqlPwd, conf->MySqlDatabase);
-    //Get Start of day value
+    //Get Start of day value, all in local time
     sprintf(SQLQUERY,"SELECT if(sunrise < NOW(),1,0) FROM Almanac WHERE date= DATE_FORMAT( NOW(), \"%%Y-%%m-%%d\" ) " );
     if (flag->debug == 1) printf("%s\n",SQLQUERY);
     DoQuery(SQLQUERY);
-    if ((row = mysql_fetch_row(res)))  //if there is a result, update the row
-      if( atoi( (char *)row[0] ) == 0 ) light=0;
+    if ((row = mysql_fetch_row(res)))
+      if( atoi( (char *)row[0] ) == 0 ) {
+        if (flag->debug == 1) printf("Before sunrise\n");
+        light=0;
+      }
+    // light if we are after sunrise. Now check if before sunset
     if( light ) {
-      sprintf(SQLQUERY,"SELECT if( dd.datetime > al.sunset,1,0) FROM DayData as dd left join Almanac as al on al.date=DATE(dd.datetime) and al.date=DATE(NOW()) WHERE 1 ORDER BY dd.datetime DESC LIMIT 1" );
+// EZ too complex???
+//      sprintf(SQLQUERY,"SELECT if( dd.datetime > al.sunset,1,0) FROM DayData as dd left join Almanac as al on al.date=DATE(dd.datetime) and al.date=DATE(NOW()) WHERE 1 ORDER BY dd.datetime DESC LIMIT 1" );
+      sprintf(SQLQUERY,"SELECT if(sunset > NOW(),1,0) FROM Almanac WHERE date= DATE_FORMAT( NOW(), \"%%Y-%%m-%%d\" ) " );
       if (flag->debug == 1) printf("%s\n",SQLQUERY);
       DoQuery(SQLQUERY);
-      if ((row = mysql_fetch_row(res)))  //if there is a result, update the row
-        if( atoi( (char *)row[0] ) == 1 ) light=0;
+      if ((row = mysql_fetch_row(res)))
+        if( atoi( (char *)row[0] ) == 0 ) {
+          if (flag->debug == 1) printf("After sunset\n");
+          light=0;
+        }
     }
     mysql_close(conn);
   }
@@ -852,7 +863,7 @@ ReturnType * InitReturnKeys( ConfType * conf )
 
   fp=fopen(conf->File,"r");
   if( fp == NULL ) {
-    fprintf(stderr, "ERROR: Couldn't open file %s, error = %s\n", conf->File, strerror( errno ));
+    printf("ERROR: Couldn't open file %s, error = %s\n", conf->File, strerror( errno ));
     exit(1);
   } else {
     returnkeylist=(ReturnType *)malloc(sizeof(ReturnType));
@@ -1066,7 +1077,7 @@ int GetConfig( ConfType *conf, FlagType * flag )
     {
         if(( fp=fopen(conf->Config,"r")) == (FILE *)NULL )
         {
-           fprintf(stderr, "ERROR: Could not open file %s\n", conf->Config );
+           printf("ERROR: Could not open file %s\n", conf->Config );
            return( -1 ); //Could not open file
         }
     }
@@ -1074,7 +1085,7 @@ int GetConfig( ConfType *conf, FlagType * flag )
     {
         if(( fp=fopen("./smatool.conf","r")) == (FILE *)NULL )
         {
-           fprintf(stderr, "ERROR: Could not open file ./smatool.conf\n" );
+           printf("ERROR: Could not open file ./smatool.conf\n" );
            return( -1 ); //Could not open file
         }
     }
@@ -1121,7 +1132,7 @@ xmlDocPtr getdoc (char *docname)
   doc = xmlParseFile(docname);
 
   if (doc == NULL ) {
-    fprintf(stderr,"ERROR: XML Document not parsed successfully.\n");
+    printf("ERROR: XML Document not parsed successfully.\n");
     return NULL;
   }
   return doc;
@@ -1134,18 +1145,18 @@ xmlXPathObjectPtr getnodeset (xmlDocPtr doc, xmlChar *xpath)
 
   context = xmlXPathNewContext(doc);
   if (context == NULL) {
-    fprintf(stderr, "ERROR: No context in xmlXPathNewContext\n");
+    printf("ERROR: No context in xmlXPathNewContext\n");
     return NULL;
   }
   result = xmlXPathEvalExpression(xpath, context);
   xmlXPathFreeContext(context);
   if (result == NULL) {
-    fprintf(stderr, "ERROR: No path in xmlXPathEvalExpression\n");
+    printf("ERROR: No path in xmlXPathEvalExpression\n");
     return NULL;
   }
   if(xmlXPathNodeSetIsEmpty(result->nodesetval)) {
     xmlXPathFreeObject(result);
-    fprintf(stderr, "ERROR: Empty path nodes\n");
+    printf("ERROR: Empty path nodes\n");
     return NULL;
   }
   return result;
@@ -1372,6 +1383,7 @@ int main(int argc, char **argv)
   int i,s;
   int install=0, update=0, no_dark=0;
   unsigned char tzhex[2] = { 0 };
+  int result;
   char SQLQUERY[1024];
   struct tm *utctime;
   char datetime[40];
@@ -1386,7 +1398,7 @@ int main(int argc, char **argv)
 
   unit=(UnitType *)malloc( sizeof(UnitType) * maximumUnits);
   if( unit == NULL ) {
-    fprintf(stderr, "ERROR: Unable to allocate memory\n");
+    printf("ERROR: Unable to allocate memory\n");
     exit(1);
   }
   memset(received,0,1024);
@@ -1396,17 +1408,17 @@ int main(int argc, char **argv)
   InitFlag( &flag );
   // read command arguments needed so can get config
   if( ReadCommandConfig( &conf, &flag, argc, argv, &no_dark, &install, &update ) < 0 ) {
-    fprintf(stderr, "ERROR: Unable to command line arguments\n");
+    printf("ERROR: Unable to command line arguments\n");
     exit(1);
   }
   // read Config file
   if( GetConfig( &conf, &flag ) < 0 ) {
-    fprintf(stderr, "ERROR: Unable to read config file\n");
+    printf("ERROR: Unable to read config file\n");
     exit(1);
   }
   // read command arguments  again - they overide config
   if( ReadCommandConfig( &conf, &flag, argc, argv, &no_dark ,&install, &update ) < 0 ) {
-    fprintf(stderr, "ERROR: Unable to command line arguments\n");
+    printf("ERROR: Unable to command line arguments\n");
     exit(1);
   }
   // set switches used through the program
@@ -1463,14 +1475,14 @@ int main(int argc, char **argv)
     if( ! todays_almanac( &conf, flag.debug ) ) {
       sprintf( sunrise_time, "%s", sunrise(&conf, flag.debug ));
       sprintf( sunset_time, "%s", sunset(&conf, flag.debug ));
-      if( flag.verbose == 1) printf( "sunrise=%s sunset=%s\n", sunrise_time, sunset_time );
+      if( flag.verbose == 1) printf( "sunrise=%s sunset=%s (local time)\n", sunrise_time, sunset_time );
       update_almanac(  &conf, sunrise_time, sunset_time, flag.debug );
     }
   }
   if( flag.mysql==1 ) { 
     if( flag.debug == 1 ) printf( "Before Check Schema\n" ); 
     if( check_schema( &conf, &flag,  SCHEMA ) != 1 ) {
-      fprintf(stderr, "ERROR: Schema not correct\n");
+      printf("ERROR: Schema not correct\n");
       exit(1);
     }
   }
@@ -1479,45 +1491,40 @@ int main(int argc, char **argv)
     if( flag.debug == 1) printf( "Before auto_set_dates\n" ); 
     auto_set_dates( &conf, &flag);
   }
-  if( flag.verbose == 1 ) printf( "QUERY RANGE from %s to %s\n", conf.datefrom, conf.dateto ); 
+  if( flag.verbose == 1 ) printf( "QUERY RANGE from %s to %s (daterange = %d)\n", conf.datefrom, conf.dateto, flag.daterange );
 
   // Collect data from inverter
   if(flag.location==0||no_dark==1||is_light( &conf, &flag )) {
     if (flag.debug == 1) printf("Collecting data from inverter address %s\n",conf.BTAddress);
     //Connect to Inverter
     if ((s = ConnectSocket( &conf )) < 0 ) {
-      fprintf(stderr, "ERROR: Cannot connect to socket\n");
+      printf("ERROR: Cannot connect to socket\n");
       exit(1);
     }
     // Read inverter codes
     if (flag.file == 1)
       fp=fopen(conf.File,"r");
     else {
-      fprintf(stderr, "ERROR: Cannot connect open inverter code file %s\n", conf.File);
+      printf("ERROR: Cannot connect open inverter code file %s\n", conf.File);
       exit(1);
     }
-    InverterCommand( "init", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-    InverterCommand( "login", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-    InverterCommand( "typelabel", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-    InverterCommand( "typelabel", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-    InverterCommand( "startuptime", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-    InverterCommand( "getacvoltage", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-    InverterCommand( "getenergyproduction", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-    InverterCommand( "getspotdcpower", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-    InverterCommand( "getspotdcvoltage", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-    InverterCommand( "getspotacpower", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-    InverterCommand( "getgridfreq", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-    InverterCommand( "maxACPower", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-    InverterCommand( "maxACPowerTotal", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-    InverterCommand( "ACPowerTotal", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-    InverterCommand( "DeviceStatus", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-    InverterCommand( "getrangedata", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
-    InverterCommand( "logoff", &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
+    static const char * commands[] = {
+        "init", "login", "typelabel", "startuptime",
+        "getacvoltage", "getenergyproduction", "getspotdcpower", "getspotdcvoltage", "getspotacpower", "getgridfreq",
+        "maxACPower", "maxACPowerTotal", "ACPowerTotal", "DeviceStatus", "getrangedata", "logoff",
+        0
+    };
+    while(commands[i] && result >= 0) {
+        if( flag.debug == 1) printf("Executing command %s\n", commands[i]);
+        result = InverterCommand( commands[i], &conf, &flag, &unit, &s, fp, &archdatalist, &archdatalen, &livedatalist, &livedatalen );
+        if (result < 0) printf("ERROR executing command %s\n", commands[i]);
+        i++;
+    }
   } else
     if( flag.verbose == 1) printf("Not waking up inverter\n");
 
   // Store in database
-  if (flag.mysql==1) {
+  if (result>=0 && flag.mysql==1) {
     if( flag.debug == 1) printf( "Before store in database\n" ); 
     // Connect to database
     OpenMySqlDatabase( conf.MySqlHost, conf.MySqlUser, conf.MySqlPwd, conf.MySqlDatabase );
@@ -1552,6 +1559,6 @@ int main(int argc, char **argv)
     free( livedatalist );
   livedatalen=0;
   close(s);
-  if( flag.verbose == 1) printf("Done.\n");
-  return 0;
+  if( flag.verbose == 1) printf("Done (resultcode = %d).\n", result);
+  return(result);
 }

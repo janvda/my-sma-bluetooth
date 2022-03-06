@@ -125,6 +125,7 @@ int UpdateLiveList( ConfType * conf, FlagType * flag,  UnitType *unit, char * fo
 
 
 int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, FILE * fp, int *linenum, ArchDataType **archdatalist, int *archdatalen , LiveDataType **livedatalist, int *livedatalen)
+// Returns 0 on success and -1 on error
 {
   char  *line;
   size_t len=0;
@@ -133,7 +134,7 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
   int  datalen=0;
   int   failedbluetooth=0;
   int   togo=0;
-  int   finished;
+  int   status, finished;
   time_t reporttime;
   time_t fromtime;
   time_t totime;
@@ -184,13 +185,14 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
     (*linenum)++;
     last_sent = (unsigned  char *)malloc( sizeof( unsigned char ));
     if ( last_sent == NULL ) {
-      fprintf(stderr, "ERROR: Out of memory\n" );
+      printf("ERROR: Out of memory\n" );
       return( -1 );
     }
     lineread = strtok(line," ;");
-    if( lineread[0] == ':') {  //See if line is something we need to receive
-      if( flag->debug == 1 ) printf( "\nCommand line we have finished: %s\n\n", line ); 
-      break;
+    if( lineread[0] == ':') {  // Start of new command
+      if( flag->debug == 1 ) printf( "Reached new command (%s), so returning\n\n", line ); 
+      return( 0 );
+      // Was: break;
     }
     if( flag->debug == 1 ) printf( "ProcessCommand - processing command line %s\n", line);
     if(!strcmp(lineread,"R")) {  //See if line is something we need to receive
@@ -198,6 +200,7 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
       cc = 0;
       do {
         lineread = strtok(NULL," ;");
+        if( flag->debug == 1 ) printf( "ProcessCommand - processing command %s\n", lineread);
         switch(select_str(flag, lineread)) {
           case 0: // $END
             //do nothing
@@ -259,7 +262,6 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
             for (i=0;i<rr;i++) printf("%02x ",received[i]);
             printf("\n");
           }
-
           if (memcmp(fl+4,received+4,cc-4) == 0) {
             found = 1;
             if (flag->debug == 1) printf("[%d] %s Found string we are waiting for\n",(*linenum), debugdate()); 
@@ -280,6 +282,7 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
       cc = 0;
       do {
         lineread = strtok(NULL," ;");
+        if( flag->debug == 1 ) printf( "ProcessCommand - processing command %s\n", lineread);
         switch(select_str(flag, lineread)) {
 
           case 0: // $END
@@ -360,21 +363,23 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
             // get report time and convert
             if( flag->daterange == 1 ) {
               if( strptime( conf->datefrom, "%Y-%m-%d %H:%M:%S", &tm) == 0 ) {
+                printf("ERROR: Time Conversion Error\n" );
+                return(-1);
+              } else {
                 if( flag->debug==1 ) printf( "datefrom %s\n", conf->datefrom );
-                fprintf(stderr, "ERROR: Time Conversion Error\n" );
-                exit(-1);
               }
               tm.tm_isdst=-1;
               fromtime=mktime(&tm);
               if( fromtime == -1 ) {
                 // Error we need to do something about it
-                fprintf(stderr, "ERROR: bad fromtime %03x", (int)fromtime);
+                printf("ERROR: bad fromtime %03x", (int)fromtime);
                 fromtime=0;
               }
             } else {
               printf( "no fromtime" );
               fromtime=0;
             }
+            if( flag->debug==1 ) printf( "fromtime %d, entering %03x\n", fromtime, (int)fromtime-300);
             sprintf(tt,"%03x",(int)fromtime-300); //convert to a hex in a string and start 5 mins before for dummy read.
             for (i=7;i>0;i=i-2){ //change order and convert to integer
               ti[1] = tt[i];
@@ -389,18 +394,23 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
             if( flag->daterange == 1 ) {
               if( strptime( conf->dateto, "%Y-%m-%d %H:%M:%S", &tm) == 0 ) {
                 if( flag->debug==1 ) printf( "dateto %s\n", conf->dateto );
-                fprintf(stderr, "ERROR: Time Coversion error\n" );
-                exit(-1);
+                printf("ERROR: Time Coversion error\n" );
+                return(-1);
+              } else {
+                if( flag->debug==1 ) printf( "dateto %s\n", conf->dateto );
               }
               tm.tm_isdst=-1;
               totime=mktime(&tm);
               if( totime == -1 ) {
                 // Error we need to do something about it
-                fprintf(stderr, "ERROR: bad to %03x", (int)totime );
+                printf("ERROR: bad to %03x", (int)totime );
                 totime=0;
               }
-            } else
+            } else {
+              printf( "no totime" );
               totime=0;
+            }
+            if( flag->debug==1 ) printf( "totime %d, entering %03x\n", totime, (int)totime);
             sprintf(tt,"%03x",(int)totime); //convert to a hex in a string
             // get report time and convert
             for (i=7;i>0;i=i-2){ //change order and convert to integer
@@ -419,11 +429,11 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
               fromtime=mktime(&tm)-86400;
               if( fromtime == -1 ) {
                 // Error we need to do something about it
-                fprintf(stderr, "ERROR: bad from %03x", (int)fromtime );
+                printf("ERROR: bad from %03x", (int)fromtime );
                 fromtime=0;
               }
             } else {
-              fprintf(stderr, "ERROR: no from" );
+              printf("ERROR: no from" );
               fromtime=0;
             }
             sprintf(tt,"%03x",(int)fromtime); //convert to a hex in a string
@@ -443,7 +453,7 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
               totime=mktime(&tm)-86400;
               if( totime == -1 ) {
                 // Error we need to do something about it
-                fprintf(stderr, "bad from %03x", (int)totime ); 
+                printf("bad from %03x", (int)totime ); 
                 fromtime=0;
               }
             } else
@@ -635,9 +645,18 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
 
     if(!strcmp(lineread,"E")) {  //See if line is something we need to extract
       if( readRecord.Status[0]==0xe0 ) {
-        if (flag->debug == 1) printf("\nThere is no data currently available %s\n", debugdate());
+        if (flag->debug == 1) printf("\n%s There is no data currently available, reading remaining records\n", debugdate());
         // Read the rest of the records
-        while( read_bluetooth( conf, flag, &readRecord, s, &rr, &received, cc, last_sent, &terminated ) == 0 );
+        do {
+          if (flag->debug == 1) printf("Reading Bluetooth data\n");        
+          status = read_bluetooth( conf, flag, &readRecord, s, &rr, &received, cc, last_sent, &terminated );
+        } while(status == 0);
+        if(status < 0) {
+          if (flag->verbose == 1) printf("BT error, returning -1\n");        
+          return(-1);
+        } else {
+          if (flag->debug == 1) printf("Data found, continuing\n");        
+        }
       } else {
         if (flag->debug == 1) printf("[%d] %s Extracting\n", (*linenum), debugdate());
         cc = 0;
@@ -676,7 +695,7 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
                 break;
               } else
                 //An Error has occurred
-                fprintf(stderr, "ERROR: Current Power (5) - ReadStream no data");
+                printf("ERROR: Current Power (5) - ReadStream no data");
               break;
 
             case 6: // extract total energy collected today
@@ -702,7 +721,7 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
     
             case 12: // extract time strings $TIMESTRING
               if (flag->debug == 1) printf("received[60]=0x%0X - Expected 0x6D\n", received[60]);
-              if (flag->debug == 1) printf("received[60]=0x%0X - Expected 0x6D\n", received[60]);
+              if (flag->debug == 1) printf("received[61]=0x%0X - Expected 0x23\n", received[61]);
               if(( received[60] == 0x6d )&&( received[61] == 0x23 )) {
                 memcpy(timestr,received+63,24);
                 if (flag->debug == 1) printf("Extracting timestring\n");
@@ -710,8 +729,7 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
                 idate=ConvertStreamtoTime( received+63,4, &idate, &day, &month, &year, &hour, &minute, &second  );
                 /* Allow delay for inverter to be slow */
                 if( reporttime > idate ) {
-                  if( flag->debug == 1 )
-                      printf( "Delay = %d\n", (int)(reporttime-idate) );
+                  if( flag->debug == 1 ) printf( "Delay = %d\n", (int)(reporttime-idate) );
                   //sleep( reporttime - idate );
                   sleep(5);    //was sleeping for > 1min excessive
                 }
@@ -727,8 +745,8 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
                 strcpy( lineread, "" );
                 failedbluetooth++;
                 if( failedbluetooth > 60 ) {
-                  fprintf(stderr, "ERROR: Failed Bluetooth");
-                  exit(-1);
+                  printf("ERROR: Failed Bluetooth");
+                  return(-1);
                 }
               }
               break;
@@ -739,7 +757,7 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
                 free( data );
                 break;
               } else
-                fprintf(stderr, "ERROR: Test data (17) - ReadStream no data");
+                printf("ERROR: Test data (17) - ReadStream no data");
                 //An Error has occurred
               break;
     
@@ -783,30 +801,11 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
                   if( togo == 0 ) {
                     finished=1;
                   } else {
-                    if (flag->debug == 1) printf("\nStill records to go (%d)\n", togo);
-                    if( read_bluetooth( conf, flag, &readRecord, s, &rr, received, cc, last_sent, &terminated ) != 0 ) {
-                      if (flag->debug == 1) printf("read_blutooth succeeded\n");
-                      found=0;
-                      /*
-                      if( (*archdatalen) > 0 )
-                          free( archdatalist );
-                      (*archdatalen)=0;
-                      if( (*livedatalen) > 0 )
-                          free( livedatalist );
-                      (*livedatalen)=0;
-                      */
-                      strcpy( lineread, "" );
-                      sleep(10);
-                      failedbluetooth++;
-                      if( failedbluetooth > 3 ) {
-                        fprintf(stderr, "ERROR: Failed Bluetooth");
-                        exit(-1);
-                      }
-                    }
+                    if (flag->debug == 1) printf("\nStill records to go (%d)...\n", togo);
                   }
                 } else
                   //An Error has occurred
-                  fprintf(stderr, "ERROR: ReadStream no data");
+                  printf("ERROR: ReadStream no data");
                 break;
               }
               free( data );
@@ -853,8 +852,7 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
                     }
                   }
                   if( return_key >= 0 ) {
-                    if( i==0 )
-                      printf("Inverter data: %4d-%02d-%02d  %02d:%02d:%02d %s\n", year, month, day, hour, minute, second, (data+i+8) );
+                    if( i==0 ) printf("Inverter data: %4d-%02d-%02d  %02d:%02d:%02d %s\n", year, month, day, hour, minute, second, (data+i+8) );
                     printf("Inverter data: %4d-%02d-%02d %02d:%02d:%02d %-20s = %.0f %-20s\n", year, month, day, hour, minute, second, conf->returnkeylist[return_key].description, currentpower_total/conf->returnkeylist[return_key].divisor, conf->returnkeylist[return_key].units );
                   } else
                     if( data[0]>0 )
@@ -864,7 +862,7 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
                 break;
               } else
                 //An Error has occurred
-                fprintf(stderr, "ERROR: ReadStream no data");
+                printf("ERROR: ReadStream no data");
               break;
 
             case 28: // extract data $DATA
@@ -977,7 +975,6 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
                         free( datastring );
                         break;
                     } // switch returnkeylist decimal
-                    //live_mysql( &conf, year, month, day, hour, minute, second, conf.Inverter, inverter_serial, returnkeylist[return_key].description, currentpower_total/returnkeylist[return_key].divisor, returnkeylist[return_key].units, debug );
                   } else { // if return_key > 0
                     if( data[0]>0 )
                       printf("%4d-%02d-%02d %02d:%02d:%02d NO DATA for %02x %02x (current power = %.0f) NO UNITS\n", year, month, day, hour, minute, second, (data+i+1)[0], (data+i+1)[1], currentpower_total );
@@ -988,7 +985,7 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
                 break;
               } else {
                 //An Error has occurred
-                fprintf(stderr, "ERROR: Extract data (28) - ReadStream no data");
+                printf("ERROR: Extract data (28) - ReadStream no data");
                 break;
               }
               
@@ -1011,7 +1008,7 @@ int ProcessCommand( ConfType * conf, FlagType * flag, UnitType **unit, int *s, F
               break;
           } // switch select lineread
         } while (strcmp(lineread,"$END"));
-      }
+      } // if/else extract - ReadRecord Status 
     } // if need to extract
     if( flag->debug == 1 ) printf( "ProcessCommand - going to next line\n");
   } // while readline 
@@ -1053,19 +1050,26 @@ int GetLine( const char * command, FILE * fp )
  * Run a command on an inverter
  *
  */
-void InverterCommand(  const char * command, ConfType * conf, FlagType * flag, UnitType **unit, int *s, FILE * fp, ArchDataType **archdatalist, int *archdatalen , LiveDataType **livedatalist, int *livedatalen)
+int InverterCommand(  const char * command, ConfType * conf, FlagType * flag, UnitType **unit, int *s, FILE * fp, ArchDataType **archdatalist, int *archdatalen , LiveDataType **livedatalist, int *livedatalen)
 {
   int linenum;
+  int result;
 
-  if (fseek( fp, 0L, 0 ) < 0 )
-    fprintf(stderr, "ERROR: Cannot seek sma.in file" );
+  if (fseek( fp, 0L, 0 ) < 0 ) {
+    printf("ERROR: Cannot seek sma.in file" );
+    return -1;
+  }
   if(( linenum = GetLine( command, fp )) > 0 ) {
-    if( ProcessCommand( conf, flag, unit, s, fp, &linenum, archdatalist, archdatalen, livedatalist, livedatalen ) < 0 ) {
-      fprintf(stderr, "ERROR: Cannot process Command %s\n", command);
-      exit(-1);
+    result = ProcessCommand( conf, flag, unit, s, fp, &linenum, archdatalist, archdatalen, livedatalist, livedatalen );
+    if(result < 0) {
+      printf("ERROR: Cannot process Command %s\n", command);
+      return -1;
+    } else {
+      return result;
     }
   } else {
     //Command not found in config
-    fprintf(stderr, "ERROR: Command %s not found in config!\n", command );
+    printf("ERROR: Command %s not found in config!\n", command );
+    return -1;
   }
 }
