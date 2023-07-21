@@ -1,0 +1,24 @@
+version: "3.7"
+volumes:
+  mariadb_data:
+services:
+  my-sma-bluetooth:
+    build: sma-bluetooth
+    privileged: true
+    restart: always
+    network_mode: host 
+    environment:
+      - TZ=${TZ:-Europe/Paris} # sets the timezone (you can also use "UTC") - important for timestamps
+  mariadb:
+    image: linuxserver/mariadb:arm32v7-10.6.13-r0-ls97
+    container_name: "mariadb"
+    restart: always
+    ports:
+      - 3306:3306
+    environment:
+      - TZ==${TZ:-Europe/Paris} # sets the timezone (you can also use "UTC") - important for timestamps
+      - MYSQL_ROOT_PASSWORD
+      - MYSQL_USER=jan #optional
+      - MYSQL_PASSWORD #optional
+    volumes:
+      - mariadb_data:/config
