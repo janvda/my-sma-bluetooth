@@ -26,6 +26,6 @@ down stop start restart ps logs top images build:
 	docker-compose -f docker-compose.yml -f $(compose_override)  -p $(project_name) $@
 
 copy_config:
-	docker cp .my-smatool.conf `docker ps -aqf "name=my-sma-bluetooth"`:/etc/smatool.conf
+	docker cp .my-smatool.conf `docker ps -aqf "name=my-sma-bluetooth"`:/my-sma-config/smatool.conf
 
 .PHONY: default up  build down stop start restart ps logs top images 
