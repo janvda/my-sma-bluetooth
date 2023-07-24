@@ -1,9 +1,13 @@
 # sma-bluetooth
+
+## Original README contents
+
 A C program to connect to SMA inverters via Bluetooth and export data (e.g. into MySQL database.
 
 Forked to implement own adaptations, and for Raspberry Pi (Buster)
 
 Needs:
+
 * xml2 (libxml2-dev)
 * bluetooth (libbluetooth-dev)
 * mysql client (was libmysqlclient-dev, apparently now default-libmysqlclient-dev)
