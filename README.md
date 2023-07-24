@@ -2,7 +2,20 @@
 
 ## Prerequisites
 
-Create a file `.my-smatool.conf` with your personal sma settings in same folder as the `docker-compose.yml` file.  You can use file [smatool.conf.new](./sma-bluetooth/src/smatool.conf.new) as a template for this file.
+### sma-bluetooth service
+
+1. Create a file `.my-smatool.conf` with your personal sma settings in same folder as the `docker-compose.yml` file.  You can use file [smatool.conf.new](./sma-bluetooth/src/smatool.conf.new) as a template for this file.
+
+### maria db
+
+1. create a `.env` where you specify the password for the mariadb.  E.g.
+
+```shell
+MYSQL_ROOT_PASSWORD='my-mariadb-root-password'
+MYSQL_PASSWORD='my-mariadb-password'
+```
+
+2. logon to your mariadb and create a user with proper password and and host mask =`%` and grant `ALL PRIVILEGES`
 
 ## Installation
 
