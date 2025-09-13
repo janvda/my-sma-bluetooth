@@ -1,5 +1,4 @@
 # docker compose file for pi3one
-version: "3.7"
 #services:
 # my-sma-bluetooth:
 #   volumes:

@@ -1,4 +1,6 @@
-# my-sma-bluetooth
+# my-sma-bluetooth (OBSOLETE)
+
+** This project is no longer used - instead we are using sbfspot (part of pi3one project) **
 
 ## Prerequisites
 

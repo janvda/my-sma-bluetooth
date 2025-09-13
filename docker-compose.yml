@@ -1,9 +1,9 @@
-version: "3.7"
 volumes:
   mariadb_data:
   my-sma-config:
 services:
   my-sma-bluetooth:
+    profiles: [ dontstart ]  # obsolete project
     build: sma-bluetooth
     privileged: true
     restart: always
@@ -14,6 +14,7 @@ services:
       - /var/run/dbus/:/var/run/dbus/
       - my-sma-config:/my-sma-config
   mariadb:
+    profiles: [ dontstart ]  # obsolete project
     image: linuxserver/mariadb:arm32v7-10.6.13-r0-ls97
     container_name: "mariadb"
     restart: always
